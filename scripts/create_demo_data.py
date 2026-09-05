@@ -22,6 +22,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--countries", default=None, help="Comma-separated ISO3 codes")
     parser.add_argument("--start", type=int, default=2015)
     parser.add_argument("--end", type=int, default=2025)
+    parser.add_argument(
+        "--output",
+        default=str(OUTPUT_PATH),
+        help="Output CSV path (default: data/processed/panel_wide.csv)",
+    )
     return parser.parse_args()
 
 
@@ -79,11 +84,14 @@ def main() -> None:
         raise SystemExit(f"Unknown configured country code(s): {', '.join(unknown)}")
 
     panel = create_panel([by_iso3[iso3] for iso3 in requested], args.start, args.end)
-    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    panel.to_csv(OUTPUT_PATH, index=False)
+    output_path = Path(args.output)
+    if not output_path.is_absolute():
+        output_path = ROOT / output_path
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    panel.to_csv(output_path, index=False)
     print(
         f"Wrote synthetic demo panel: {len(panel):,} rows, "
-        f"{len(requested)} countries, {args.start}-{args.end} -> {OUTPUT_PATH}"
+        f"{len(requested)} countries, {args.start}-{args.end} -> {output_path}"
     )
 
 
