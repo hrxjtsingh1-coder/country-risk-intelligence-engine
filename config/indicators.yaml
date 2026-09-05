@@ -1,0 +1,110 @@
+indicators:
+  - code: FP.CPI.TOTL.ZG
+    label: Inflation
+    category: Prices
+    weight: 0.16
+    risk_direction: 1
+    source: world_bank
+    world_bank: FP.CPI.TOTL.ZG
+    min: -20
+    max: 100
+
+  - code: NY.GDP.MKTP.KD.ZG
+    label: Real GDP growth
+    category: Growth
+    weight: 0.16
+    risk_direction: -1
+    source: world_bank
+    world_bank: NY.GDP.MKTP.KD.ZG
+    min: -40
+    max: 30
+
+  - code: SL.UEM.TOTL.ZS
+    label: Unemployment
+    category: Labor
+    weight: 0.10
+    risk_direction: 1
+    source: world_bank
+    world_bank: SL.UEM.TOTL.ZS
+    min: 0
+    max: 100
+
+  - code: GC.DOD.TOTL.GD.ZS
+    label: Public debt
+    category: Fiscal
+    weight: 0.14
+    risk_direction: 1
+    source: world_bank
+    world_bank: GC.DOD.TOTL.GD.ZS
+    min: 0
+    max: 500
+
+  - code: BN.CAB.XOKA.GD.ZS
+    label: Current account balance
+    category: External
+    weight: 0.09
+    risk_direction: -1
+    source: world_bank
+    world_bank: BN.CAB.XOKA.GD.ZS
+    min: -100
+    max: 100
+
+  - code: FI.RES.TOTL.MO
+    label: FX reserves
+    category: External
+    weight: 0.10
+    risk_direction: -1
+    source: world_bank
+    world_bank: FI.RES.TOTL.MO
+    min: 0
+    max: 500
+
+  - code: DT.DOD.DECT.GN.ZS
+    label: External debt
+    category: External
+    weight: 0.09
+    risk_direction: 1
+    source: world_bank
+    world_bank: DT.DOD.DECT.GN.ZS
+    min: 0
+    max: 1000
+
+  - code: FB.AST.NPER.ZS
+    label: Non-performing loans
+    category: Banking
+    weight: 0.06
+    risk_direction: 1
+    source: world_bank
+    world_bank: FB.AST.NPER.ZS
+    min: 0
+    max: 100
+
+  - code: FX_YOY_DEPRECIATION_PCT
+    label: Currency depreciation
+    category: FX
+    weight: 0.06
+    risk_direction: 1
+    source: derived
+    min: -100
+    max: 500
+
+  - code: POLICY_RATE_YOY_CHANGE_BPS
+    label: Policy-rate change
+    category: Monetary
+    weight: 0.04
+    risk_direction: 1
+    source: fred
+    fred: DFF
+    min: -1000
+    max: 1000
+
+  # Optional source placeholders. If an external endpoint is unavailable,
+  # the collector leaves them missing instead of inventing observations.
+  - code: BIS_CREDIT_GAP
+    label: Credit-to-GDP gap
+    category: Credit
+    weight: 0.00
+    risk_direction: 1
+    source: bis
+    min: -100
+    max: 100
