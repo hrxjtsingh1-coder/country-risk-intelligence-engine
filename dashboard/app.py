@@ -27,6 +27,7 @@ sys.path.append(str(ROOT))
 CONFIG_DIR = ROOT / "config"
 PROCESSED_DIR = ROOT / "data" / "processed"
 PANEL_PATH = PROCESSED_DIR / "panel_wide.csv"
+DEMO_PANEL_PATH = ROOT / "data" / "demo" / "panel_wide.csv"
 
 from src.commentary.generate_commentary import generate_report
 from src.scenario.scenario_engine import run_shock_scenario
@@ -838,13 +839,16 @@ def load_configurations():
 
 
 @st.cache_data(show_spinner=False)
-def load_panel():
-    return pd.read_csv(PROCESSED_DIR / "panel_wide.csv")
+def load_panel(panel_path: Path):
+    return pd.read_csv(panel_path)
 
 
 countries_cfg, indicators_cfg = load_configurations()
 
-if not PANEL_PATH.exists():
+DATASET_PATH = PANEL_PATH if PANEL_PATH.exists() else DEMO_PANEL_PATH
+USING_DEMO_DATA = DATASET_PATH == DEMO_PANEL_PATH
+
+if not DATASET_PATH.exists():
     st.markdown(
         """
         <div class="card" style="margin-top:24px;">
@@ -860,7 +864,13 @@ if not PANEL_PATH.exists():
     )
     st.stop()
 
-panel = load_panel()
+if USING_DEMO_DATA:
+    st.info(
+        "Demo mode is active: this dashboard is using the bundled synthetic "
+        "panel. Run the live pipeline to replace it with World Bank/FRED data."
+    )
+
+panel = load_panel(DATASET_PATH)
 
 
 # ============================================================================
@@ -1077,7 +1087,7 @@ with st.sidebar:
     st.markdown(
         f"""
         <div style="padding:4px 4px 16px;">
-            <div class="kicker">RISK ENGINE / LIVE PANEL</div>
+            <div class="kicker">RISK ENGINE / {('DEMO PANEL' if USING_DEMO_DATA else 'LIVE PANEL')}</div>
             <div style="font-family:'Space Grotesk';font-size:21px;font-weight:700;">
                 Control Room
             </div>
