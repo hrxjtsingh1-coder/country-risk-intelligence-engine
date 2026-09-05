@@ -207,6 +207,28 @@ div[data-testid="stMetric"] {
     transform: translateY(-1px);
 }
 
+.stButton > button:focus-visible,
+.stDownloadButton > button:focus-visible,
+[data-baseweb="select"]:focus-within,
+input:focus-visible {
+    outline: 2px solid rgba(94,231,242,.85);
+    outline-offset: 2px;
+}
+
+.stAlert {
+    border-radius: 14px;
+    border: 1px solid rgba(94,231,242,.18);
+    background: linear-gradient(135deg, rgba(21,46,72,.9), rgba(12,25,43,.86));
+}
+
+.stAlert p {
+    color: #b7d9ee;
+}
+
+.stCaption {
+    color: var(--muted);
+}
+
 .stSelectbox [data-baseweb="select"] > div,
 .stNumberInput input,
 .stTextInput input {
@@ -804,17 +826,50 @@ div[data-testid="stDataFrame"] {
         padding-left: 1rem;
         padding-right: 1rem;
     }
+    .section-head {
+        display: block;
+        margin-top: 27px;
+    }
+    .section-head .micro {
+        margin-top: 8px;
+    }
     .hero {
         padding: 25px 22px;
+        border-radius: 18px;
     }
     .hero h1 {
         font-size: 36px;
+    }
+    .hero-copy {
+        font-size: 14px;
+    }
+    .score-ring {
+        width: 190px;
+        height: 190px;
+    }
+    .score-number {
+        font-size: 44px;
+    }
+    .stButton > button,
+    .stDownloadButton > button {
+        min-height: 44px;
     }
     .metadata {
         grid-template-columns: 1fr;
     }
     .signal-grid {
         grid-template-columns: 1fr;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: .01ms !important;
     }
 }
 </style>
@@ -844,6 +899,11 @@ def load_panel(panel_path: Path):
 
 
 countries_cfg, indicators_cfg = load_configurations()
+peer_groups = (
+    countries_cfg.get("peer_groups", {})
+    if isinstance(countries_cfg, dict)
+    else {}
+)
 
 DATASET_PATH = PANEL_PATH if PANEL_PATH.exists() else DEMO_PANEL_PATH
 USING_DEMO_DATA = DATASET_PATH == DEMO_PANEL_PATH
@@ -1206,7 +1266,13 @@ if row.empty or pd.isna(row.iloc[0]["risk_score"]):
 
 score_value = safe_float(row.iloc[0]["risk_score"])
 band = str(row.iloc[0]["risk_band"])
+score_color = band_color(band)
 coverage_value = safe_float(row.iloc[0]["data_completeness"], default=float("nan"))
+
+try:
+    current_row = row_for(panel, country, year)
+except Exception:
+    current_row = pd.Series(dtype=object)
 
 try:
     country_drivers = top_drivers(drivers, country, year, n=6)
@@ -1214,7 +1280,12 @@ except Exception as exc:
     country_drivers = pd.DataFrame()
     st.warning(f"Driver decomposition unavailable: {exc}")
 
+driver_code = "POLICY_RATE_YOY_CHANGE_BPS"
+shock_amount = float(shock)
+run_scenario_btn = not np.isclose(shock_amount, 0.0)
 scenario_result = None
+scenario = None
+scenario_error = None
 
 if run_scenario_btn:
     try:
@@ -1230,7 +1301,9 @@ if run_scenario_btn:
                 "GC.DOD.TOTL.GD.ZS",
             ],
         )
+        scenario = scenario_result
     except Exception as exc:
+        scenario_error = exc
         st.warning(f"Couldn't run that scenario: {exc}")
 
 peer_group = next(
