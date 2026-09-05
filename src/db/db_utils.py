@@ -81,3 +81,15 @@ def top_risk_countries(conn: sqlite3.Connection, year: int, n: int = 5) -> pd.Da
         LIMIT {int(n)}
         """,
     )
+
+
+def clear_run_data(conn: sqlite3.Connection) -> None:
+    """Clear derived rows before a fresh pipeline load.
+
+    This keeps the primary-key tables reproducible across repeated pipeline
+    executions without changing the schema or analytical formulas.
+    """
+    conn.execute("DELETE FROM score_drivers")
+    conn.execute("DELETE FROM risk_scores")
+    conn.execute("DELETE FROM indicator_values")
+    conn.commit()
