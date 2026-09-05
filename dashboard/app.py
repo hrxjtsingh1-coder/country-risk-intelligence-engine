@@ -1246,10 +1246,6 @@ def make_plotly_layout(fig, height=360, margin=None):
             color=COLORS["muted"],
             size=11,
         ),
-        title_font=dict(
-            family="Space Grotesk, sans-serif",
-            color=COLORS["text"],
-        ),
         legend=dict(
             bgcolor="rgba(0,0,0,0)",
             font=dict(color=COLORS["muted"], size=10),
