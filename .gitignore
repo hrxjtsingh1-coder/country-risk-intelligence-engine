@@ -1,0 +1,12 @@
+# Generated pipeline outputs
+data/processed/
+
+# Python cache and local environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Streamlit local state
+.streamlit/secrets.toml
