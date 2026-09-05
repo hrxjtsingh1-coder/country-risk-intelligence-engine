@@ -48,6 +48,7 @@ from src.scoring.risk_score import score_panel, top_drivers
 
 import html
 import math
+import textwrap
 from datetime import datetime
 
 import numpy as np
@@ -55,6 +56,22 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 import streamlit as st
+
+
+# Streamlit's Markdown parser treats indented HTML as a code block. The
+# dashboard intentionally uses readable, indented HTML templates, so dedent
+# every Markdown payload once at the rendering boundary instead of forcing
+# every component template to be flush-left.
+_streamlit_markdown = st.markdown
+
+
+def _dedented_markdown(body, *args, **kwargs):
+    if isinstance(body, str):
+        body = textwrap.dedent(body)
+    return _streamlit_markdown(body, *args, **kwargs)
+
+
+st.markdown = _dedented_markdown
 
 
 # ============================================================================
@@ -159,6 +176,7 @@ html, body, [class*="css"] {
         linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px);
     background-size: 42px 42px;
     mask-image: linear-gradient(to bottom, black, transparent 80%);
+    animation: gridDrift 28s linear infinite;
 }
 
 .block-container {
@@ -219,6 +237,7 @@ input:focus-visible {
     border-radius: 14px;
     border: 1px solid rgba(94,231,242,.18);
     background: linear-gradient(135deg, rgba(21,46,72,.9), rgba(12,25,43,.86));
+    animation: alertIn .55s ease both;
 }
 
 .stAlert p {
@@ -334,6 +353,8 @@ div[data-testid="stDataFrame"] {
 }
 
 .hero-terminal {
+    position: relative;
+    isolation: isolate;
     justify-self: end;
     width: min(100%, 390px);
     padding: 18px;
@@ -344,6 +365,24 @@ div[data-testid="stDataFrame"] {
     font-size: 12px;
     color: #a9b6c7;
     box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+    animation: terminalIn .8s .18s ease both;
+}
+
+.hero-terminal:after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: -1;
+    background: linear-gradient(
+        to bottom,
+        transparent 0%,
+        rgba(94,231,242,.08) 48%,
+        transparent 52%,
+        transparent 100%
+    );
+    transform: translateY(-100%);
+    animation: scan 5.5s 1.2s ease-in-out infinite;
 }
 
 .terminal-top {
@@ -367,6 +406,14 @@ div[data-testid="stDataFrame"] {
 
 .terminal-line {
     margin: 6px 0;
+    animation: terminalLineIn .5s ease both;
+}
+
+.terminal-line:nth-child(2) { animation-delay: .16s; }
+.terminal-line:nth-child(3) { animation-delay: .28s; }
+.terminal-line:nth-child(4) { animation-delay: .40s; }
+.terminal-line:nth-child(5) { animation-delay: .52s; }
+.terminal-line:nth-child(6) { animation-delay: .64s; }
 }
 
 .terminal-line b {
@@ -379,6 +426,7 @@ div[data-testid="stDataFrame"] {
     justify-content: space-between;
     gap: 20px;
     margin: 34px 0 13px;
+    animation: sectionIn .55s ease both;
 }
 
 .section-title {
@@ -408,6 +456,7 @@ div[data-testid="stDataFrame"] {
         inset 0 1px 0 rgba(255,255,255,.025);
     padding: 20px;
     transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease;
+    animation: cardIn .65s ease both;
 }
 
 .card:hover {
@@ -491,6 +540,7 @@ div[data-testid="stDataFrame"] {
     box-shadow:
         0 0 55px color-mix(in srgb, var(--score-color) 18%, transparent),
         inset 0 0 35px rgba(0,0,0,.35);
+    animation: scorePulse 4.5s ease-in-out infinite;
 }
 
 .score-ring:before {
@@ -587,6 +637,9 @@ div[data-testid="stDataFrame"] {
     border-radius: inherit;
     background: linear-gradient(90deg, var(--cyan), var(--violet));
     box-shadow: 0 0 14px rgba(94,231,242,.2);
+    transform: scaleX(0);
+    transform-origin: left center;
+    animation: barGrow 1.05s .18s cubic-bezier(.2,.75,.2,1) forwards;
 }
 
 .driver-score {
@@ -608,6 +661,7 @@ div[data-testid="stDataFrame"] {
     border-radius: 12px;
     border: 1px solid var(--border);
     background: rgba(0,0,0,.12);
+    animation: signalIn .55s ease both;
 }
 
 .signal-code {
@@ -630,6 +684,9 @@ div[data-testid="stDataFrame"] {
     border-radius: 10px;
     background: linear-gradient(90deg, var(--green), transparent);
     margin-top: 8px;
+    transform: scaleX(0);
+    transform-origin: left center;
+    animation: barGrow .9s .2s cubic-bezier(.2,.75,.2,1) forwards;
 }
 
 .peer-highlight {
@@ -638,6 +695,7 @@ div[data-testid="stDataFrame"] {
     justify-content: space-between;
     padding: 12px 0;
     border-bottom: 1px solid rgba(148,163,184,.08);
+    animation: signalIn .55s ease both;
 }
 
 .peer-highlight:last-child {
@@ -661,6 +719,7 @@ div[data-testid="stDataFrame"] {
     background:
         radial-gradient(circle at 90% 0%, rgba(167,139,250,.12), transparent 35%),
         linear-gradient(135deg, rgba(18,19,35,.94), rgba(11,13,22,.9));
+    animation: scenarioPulse 5s ease-in-out infinite;
 }
 
 .scenario-label {
@@ -807,6 +866,63 @@ div[data-testid="stDataFrame"] {
 @keyframes blink {
     0%, 100% { opacity: 1; }
     50% { opacity: .42; }
+}
+
+@keyframes gridDrift {
+    from { background-position: 0 0, 0 0; }
+    to { background-position: 42px 42px, -42px 42px; }
+}
+
+@keyframes sectionIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes cardIn {
+    from { opacity: 0; transform: translateY(14px) scale(.985); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes terminalIn {
+    from { opacity: 0; transform: translateX(18px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes terminalLineIn {
+    from { opacity: 0; transform: translateX(8px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes scan {
+    0%, 18% { transform: translateY(-100%); opacity: 0; }
+    28% { opacity: 1; }
+    68% { opacity: .7; }
+    82%, 100% { transform: translateY(100%); opacity: 0; }
+}
+
+@keyframes barGrow {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+}
+
+@keyframes signalIn {
+    from { opacity: 0; transform: translateY(7px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scorePulse {
+    0%, 100% { filter: drop-shadow(0 0 0 rgba(94,231,242,0)); }
+    50% { filter: drop-shadow(0 0 12px color-mix(in srgb, var(--score-color) 24%, transparent)); }
+}
+
+@keyframes scenarioPulse {
+    0%, 100% { box-shadow: 0 0 0 rgba(167,139,250,0); }
+    50% { box-shadow: 0 0 28px rgba(167,139,250,.08); }
+}
+
+@keyframes alertIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 @media (max-width: 900px) {
@@ -1056,7 +1172,7 @@ def row_for(df, country, year):
 
 
 def find_country_column(df):
-    for column in ["country", "country_name", "iso3", "ISO3"]:
+    for column in ["country_iso3", "country", "country_name", "iso3", "ISO3"]:
         if column in df.columns:
             return column
     return None
@@ -1209,7 +1325,7 @@ with st.sidebar:
     refresh_col1, refresh_col2 = st.columns(2)
 
     with refresh_col1:
-        if st.button("↻ Refresh", use_container_width=True):
+        if st.button("↻ Refresh", width="stretch"):
             st.cache_data.clear()
             st.rerun()
 
@@ -1611,7 +1727,7 @@ with right:
         fig.update_yaxes(range=[0, 100], title="Risk score")
         fig.update_xaxes(title="Year")
         make_plotly_layout(fig, height=410)
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
 
 # ============================================================================
@@ -1877,7 +1993,7 @@ with peer_left:
         )
         st.plotly_chart(
             peer_fig,
-            use_container_width=True,
+            width="stretch",
             config={"displayModeBar": False},
         )
 
@@ -1947,13 +2063,16 @@ st.markdown(
 st.markdown(
     f"""
     <div class="scenario-hero">
-        <div class="scenario-label">ACTIVE SHOCK</div>
+        <div class="scenario-label">
+            {"ACTIVE SHOCK" if run_scenario_btn else "SCENARIO READY"}
+        </div>
         <div class="scenario-title">
-            POLICY_RATE_YOY_CHANGE_BPS
+            Policy-rate sensitivity
             <span style="color:{COLORS['violet']};"> {fmt_delta(shock,0)} bps</span>
         </div>
         <div class="card-caption" style="margin-top:7px;">
-            Baseline: {esc(country_label)} · {int(year)} · score {fmt_number(score_value,1)}
+            Driver: POLICY_RATE_YOY_CHANGE_BPS · Baseline: {esc(country_label)}
+            · {int(year)} · score {fmt_number(score_value,1)}
         </div>
     </div>
     """,
@@ -2210,12 +2329,12 @@ metadata = [
 meta_html = '<div class="card"><div class="metadata">'
 
 for key, value in metadata:
-    meta_html += f"""
-        <div class="meta-item">
-            <div class="meta-k">{esc(key)}</div>
-            <div class="meta-v">{esc(value)}</div>
-        </div>
-    """
+    meta_html += (
+        f'<div class="meta-item">'
+        f'<div class="meta-k">{esc(key)}</div>'
+        f'<div class="meta-v">{esc(value)}</div>'
+        f"</div>"
+    )
 
 meta_html += "</div></div>"
 
@@ -2251,7 +2370,7 @@ with export_left:
         data=csv_bytes,
         file_name=f"country_risk_panel_{int(year)}.csv",
         mime="text/csv",
-        use_container_width=True,
+        width="stretch",
     )
 
     st.caption(
@@ -2263,16 +2382,20 @@ with export_right:
         if current_row.empty:
             empty_state("No matching country-year row found.")
         else:
+            selected_row = current_row.to_frame("value").reset_index()
+            selected_row.columns = ["field", "value"]
+            selected_row["field"] = selected_row["field"].astype(str)
+            selected_row["value"] = selected_row["value"].astype(str)
             st.dataframe(
-                current_row.to_frame("value"),
-                use_container_width=True,
+                selected_row,
+                width="stretch",
             )
 
     with st.expander("Inspect top driver output"):
         if isinstance(country_drivers, pd.DataFrame) and not country_drivers.empty:
             st.dataframe(
                 country_drivers,
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
         else:
