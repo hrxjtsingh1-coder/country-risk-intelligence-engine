@@ -59,19 +59,21 @@ import streamlit as st
 
 
 # Streamlit's Markdown parser treats indented HTML as a code block. The
-# dashboard intentionally uses readable, indented HTML templates, so dedent
-# every Markdown payload once at the rendering boundary instead of forcing
-# every component template to be flush-left.
-_streamlit_markdown = st.markdown
+# dashboard intentionally uses readable, indented HTML templates. Keep this
+# compatibility wrapper idempotent: Streamlit reruns the script in the same
+# process, so wrapping st.markdown repeatedly can create recursive renderers
+# and unreliable refreshes.
+if not getattr(st.markdown, "_cri_html_normalized", False):
+    _streamlit_markdown = st.markdown
 
+    def _dedented_markdown(body, *args, **kwargs):
+        if isinstance(body, str) and kwargs.get("unsafe_allow_html"):
+            body = textwrap.dedent(body)
+            body = "\n".join(line.lstrip() for line in body.splitlines())
+        return _streamlit_markdown(body, *args, **kwargs)
 
-def _dedented_markdown(body, *args, **kwargs):
-    if isinstance(body, str):
-        body = textwrap.dedent(body)
-    return _streamlit_markdown(body, *args, **kwargs)
-
-
-st.markdown = _dedented_markdown
+    _dedented_markdown._cri_html_normalized = True
+    st.markdown = _dedented_markdown
 
 
 # ============================================================================
@@ -163,6 +165,7 @@ html, body, [class*="css"] {
         radial-gradient(circle at 50% 100%, rgba(110,168,255,.06), transparent 30%),
         #06080d;
     color: var(--text);
+    overflow-x: hidden;
 }
 
 .stApp:before {
@@ -183,6 +186,7 @@ html, body, [class*="css"] {
     max-width: 1600px;
     padding-top: 2rem;
     padding-bottom: 4rem;
+    overflow-x: hidden;
 }
 
 header[data-testid="stHeader"] {
@@ -222,7 +226,6 @@ div[data-testid="stMetric"] {
 .stDownloadButton > button:hover {
     border-color: rgba(94,231,242,.55);
     box-shadow: 0 0 22px rgba(94,231,242,.12);
-    transform: translateY(-1px);
 }
 
 .stButton > button:focus-visible,
@@ -281,6 +284,7 @@ div[data-testid="stDataFrame"] {
 .hero {
     position: relative;
     overflow: hidden;
+    box-sizing: border-box;
     min-height: 250px;
     padding: 34px 38px;
     border: 1px solid var(--border);
@@ -313,11 +317,15 @@ div[data-testid="stDataFrame"] {
 
 .hero-grid {
     display: grid;
-    grid-template-columns: 1.35fr .65fr;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, .65fr);
     gap: 30px;
     align-items: center;
     position: relative;
     z-index: 1;
+}
+
+.hero-grid > * {
+    min-width: 0;
 }
 
 .kicker {
@@ -335,6 +343,8 @@ div[data-testid="stDataFrame"] {
     line-height: .98;
     letter-spacing: -.045em;
     color: #fff;
+    max-width: 100%;
+    overflow-wrap: normal;
 }
 
 .hero h1 span {
@@ -346,17 +356,22 @@ div[data-testid="stDataFrame"] {
 
 .hero-copy {
     max-width: 740px;
+    width: 100%;
     margin-top: 18px;
     color: var(--muted);
     font-size: 15px;
     line-height: 1.7;
+    overflow-wrap: anywhere;
 }
 
 .hero-terminal {
     position: relative;
     isolation: isolate;
     justify-self: end;
-    width: min(100%, 390px);
+    width: 100%;
+    max-width: 390px;
+    min-width: 0;
+    overflow: hidden;
     padding: 18px;
     border: 1px solid var(--border);
     border-radius: 15px;
@@ -406,6 +421,7 @@ div[data-testid="stDataFrame"] {
 
 .terminal-line {
     margin: 6px 0;
+    overflow-wrap: anywhere;
     animation: terminalLineIn .5s ease both;
 }
 
@@ -460,7 +476,6 @@ div[data-testid="stDataFrame"] {
 }
 
 .card:hover {
-    transform: translateY(-2px);
     border-color: rgba(148,163,184,.28);
     box-shadow:
         0 22px 60px rgba(0,0,0,.28),
@@ -541,6 +556,14 @@ div[data-testid="stDataFrame"] {
         0 0 55px color-mix(in srgb, var(--score-color) 18%, transparent),
         inset 0 0 35px rgba(0,0,0,.35);
     animation: scorePulse 4.5s ease-in-out infinite;
+}
+
+.js-plotly-plot,
+.plotly-graph-div {
+    max-width: 100%;
+    overflow: hidden;
+    transform: none !important;
+    animation: none !important;
 }
 
 .score-ring:before {
@@ -931,6 +954,7 @@ div[data-testid="stDataFrame"] {
     }
     .hero-terminal {
         justify-self: start;
+        max-width: none;
     }
     .metadata {
         grid-template-columns: repeat(2, minmax(0,1fr));
@@ -954,7 +978,10 @@ div[data-testid="stDataFrame"] {
         border-radius: 18px;
     }
     .hero h1 {
-        font-size: 36px;
+        font-size: clamp(30px, 8.8vw, 38px);
+        line-height: 1;
+        word-break: normal;
+        overflow-wrap: normal;
     }
     .hero-copy {
         font-size: 14px;
@@ -1211,6 +1238,7 @@ def make_plotly_layout(fig, height=360, margin=None):
     fig.update_layout(
         height=height,
         margin=margin,
+        uirevision="country-risk-intelligence",
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font=dict(
@@ -1727,7 +1755,15 @@ with right:
         fig.update_yaxes(range=[0, 100], title="Risk score")
         fig.update_xaxes(title="Year")
         make_plotly_layout(fig, height=410)
-        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        st.plotly_chart(
+            fig,
+            width="stretch",
+            config={
+                "displayModeBar": False,
+                "responsive": True,
+                "staticPlot": True,
+            },
+        )
 
 
 # ============================================================================
@@ -1994,7 +2030,11 @@ with peer_left:
         st.plotly_chart(
             peer_fig,
             width="stretch",
-            config={"displayModeBar": False},
+            config={
+                "displayModeBar": False,
+                "responsive": True,
+                "staticPlot": True,
+            },
         )
 
 with peer_right:
