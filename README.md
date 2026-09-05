@@ -100,6 +100,16 @@ streamlit run dashboard/app.py
 The demo data is synthetic and clearly intended for interface demonstration.
 It is never mixed with the live data collector.
 
+The Streamlit Cloud entrypoint is also available at the repository root:
+
+```text
+Main file path: streamlit_app.py
+```
+
+When deployed, the dashboard automatically uses the bundled synthetic demo
+panel until a live `data/processed/panel_wide.csv` is generated. The interface
+labels this mode clearly so demo output is not mistaken for real economic data.
+
 ### 4. Run the live public-data pipeline
 
 Run a small universe first:
@@ -173,6 +183,8 @@ country-risk-intelligence-engine/
 ├── dashboard/app.py                  # Streamlit intelligence cockpit
 ├── scripts/
 │   └── create_demo_data.py           # Offline deterministic showcase data
+├── streamlit_app.py                  # Streamlit Cloud entrypoint
+├── data/demo/panel_wide.csv          # Tracked synthetic showcase panel
 ├── src/
 │   ├── cleaning/clean.py             # Validation, cleaning, panel shaping
 │   ├── commentary/generate_commentary.py
