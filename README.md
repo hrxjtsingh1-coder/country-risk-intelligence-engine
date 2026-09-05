@@ -166,7 +166,6 @@ than being fabricated.
 
 ```text
 country-risk-intelligence-engine/
-├── .github/workflows/quality.yml     # Compile and smoke checks
 ├── .streamlit/config.toml            # Dark dashboard theme
 ├── config/
 │   ├── countries.yaml                # Country universe and peer groups
@@ -188,9 +187,8 @@ country-risk-intelligence-engine/
 
 ## Quality checks
 
-The repository includes a lightweight GitHub Actions workflow that compiles the
-Python source, generates the offline demo panel, and exercises the scoring
-contract. Run the same checks locally with:
+The source is designed to be easy to validate locally. Compile the application
+and generate the offline demo panel with:
 
 ```bash
 python -m compileall -q src dashboard scripts
