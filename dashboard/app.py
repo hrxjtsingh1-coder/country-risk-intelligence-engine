@@ -24,6 +24,10 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.append(str(ROOT))
 
+CONFIG_DIR = ROOT / "config"
+PROCESSED_DIR = ROOT / "data" / "processed"
+PANEL_PATH = PROCESSED_DIR / "panel_wide.csv"
+
 from src.commentary.generate_commentary import generate_report
 from src.scenario.scenario_engine import run_shock_scenario
 from src.scoring.risk_score import score_panel, top_drivers
@@ -839,6 +843,23 @@ def load_panel():
 
 
 countries_cfg, indicators_cfg = load_configurations()
+
+if not PANEL_PATH.exists():
+    st.markdown(
+        """
+        <div class="card" style="margin-top:24px;">
+            <div class="card-label">ENGINE WAITING FOR DATA</div>
+            <div class="card-value" style="font-size:24px;">panel_wide.csv not found</div>
+            <div class="card-caption" style="margin-top:10px;">
+                Run <code>python -m src.pipeline.run_all</code> once to build the
+                dashboard-ready panel from the configured public data sources.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.stop()
+
 panel = load_panel()
 
 
@@ -898,34 +919,37 @@ def score_band(score):
     return "Severe"
 
 
-def get_iso(country):
+def country_records():
     if isinstance(countries_cfg, dict):
-        entry = countries_cfg.get(country, {})
-        if isinstance(entry, dict):
-            return (
-                entry.get("iso3")
-                or entry.get("ISO3")
-                or entry.get("code")
-                or entry.get("iso")
-                or country
-            )
-    return country
+        records = countries_cfg.get("countries", [])
+        if isinstance(records, list):
+            return [r for r in records if isinstance(r, dict)]
+    return []
+
+
+def country_lookup():
+    return {
+        str(record.get("iso3")): record
+        for record in country_records()
+        if record.get("iso3")
+    }
+
+
+def get_iso(country):
+    return str(country)
 
 
 def get_country_label(country):
-    if isinstance(countries_cfg, dict):
-        entry = countries_cfg.get(country, {})
-        if isinstance(entry, dict):
-            return (
-                entry.get("name")
-                or entry.get("country")
-                or entry.get("label")
-                or country
-            )
-    return country
+    record = country_lookup().get(str(country))
+    if record:
+        return str(record.get("name") or country)
+    return str(country)
 
 
 def available_countries(df):
+    if "country_iso3" in df.columns:
+        return sorted(df["country_iso3"].dropna().astype(str).unique().tolist())
+
     candidates = []
     for column in ["country", "country_name", "iso3", "ISO3"]:
         if column in df.columns:
@@ -943,7 +967,9 @@ def available_years(df):
 
 
 def row_for(df, country, year):
-    if "country" in df.columns:
+    if "country_iso3" in df.columns:
+        mask = df["country_iso3"].astype(str).eq(str(country))
+    elif "country" in df.columns:
         mask = df["country"].astype(str).eq(str(country))
     elif "iso3" in df.columns:
         mask = df["iso3"].astype(str).eq(str(country))
@@ -1075,6 +1101,7 @@ with st.sidebar:
         "Country",
         country_options,
         index=country_options.index(default_country),
+        format_func=get_country_label,
         key="country_selector",
     )
 
@@ -1138,123 +1165,78 @@ with st.sidebar:
 # ============================================================================
 # ORIGINAL ANALYTICAL EXECUTION
 # ============================================================================
-
-# These calls are intentionally retained as the original analytical pipeline.
-# Do not replace them with UI-derived calculations.
+#
+# The calls below intentionally mirror the original dashboard contract:
+#
+#   scores, drivers = score_panel(panel)
+#   top_drivers(drivers, country, year, n=6)
+#   run_shock_scenario(panel, ...)
+#   generate_report(...)
+#
+# The UI never substitutes a second scoring methodology.
+# ============================================================================
 
 scores, drivers = score_panel(panel)
 
-try:
-    current_row = row_for(panel, country, year)
-except Exception:
-    current_row = pd.Series(dtype=object)
+if "country_iso3" not in scores.columns or "year" not in scores.columns:
+    st.error("Scoring output is missing country_iso3/year columns.")
+    st.stop()
+
+row = scores[
+    scores["country_iso3"].astype(str).eq(str(country))
+    & pd.to_numeric(scores["year"], errors="coerce").eq(int(year))
+]
+
+if row.empty or pd.isna(row.iloc[0]["risk_score"]):
+    st.error(
+        f"No sufficient indicator data to score "
+        f"{get_country_label(country)} in {year}."
+    )
+    st.stop()
+
+score_value = safe_float(row.iloc[0]["risk_score"])
+band = str(row.iloc[0]["risk_band"])
+coverage_value = safe_float(row.iloc[0]["data_completeness"], default=float("nan"))
 
 try:
     country_drivers = top_drivers(drivers, country, year, n=6)
-except Exception:
-    country_drivers = pd.DataFrame()
-
-try:
-    scenario = run_shock_scenario(
-        panel,
-        country,
-        year,
-        "POLICY_RATE_YOY_CHANGE_BPS",
-        shock,
-        [
-            "FX_YOY_DEPRECIATION_PCT",
-            "NY.GDP.MKTP.KD.ZG",
-            "GC.DOD.TOTL.GD.ZS",
-        ],
-    )
 except Exception as exc:
-    scenario = None
-    scenario_error = exc
-else:
-    scenario_error = None
+    country_drivers = pd.DataFrame()
+    st.warning(f"Driver decomposition unavailable: {exc}")
 
-try:
-    report = generate_report(
-        country=country,
-        year=year,
-        score=scores,
-        drivers=drivers,
-        scenario=scenario,
-    )
-except Exception:
-    # Some original implementations use a different positional signature.
-    # Fall back to the original style if available.
+scenario_result = None
+
+if run_scenario_btn:
     try:
-        report = generate_report(country, year, scores, drivers, scenario)
+        scenario_result = run_shock_scenario(
+            panel,
+            country,
+            year,
+            driver_code,
+            shock_amount,
+            [
+                "FX_YOY_DEPRECIATION_PCT",
+                "NY.GDP.MKTP.KD.ZG",
+                "GC.DOD.TOTL.GD.ZS",
+            ],
+        )
     except Exception as exc:
-        report = f"Analyst commentary unavailable: {exc}"
+        st.warning(f"Couldn't run that scenario: {exc}")
 
+peer_group = next(
+    (members for members in peer_groups.values() if country in members),
+    None,
+)
 
-# ============================================================================
-# NORMALIZE ANALYTICAL OUTPUTS FOR DISPLAY ONLY
-# ============================================================================
-
-score_value = None
-
-if isinstance(scores, pd.DataFrame):
-    score_column = find_score_column(scores)
-    if score_column:
-        try:
-            if "country" in scores.columns and "year" in scores.columns:
-                score_match = scores[
-                    scores["country"].astype(str).eq(str(country))
-                    & pd.to_numeric(scores["year"], errors="coerce").eq(int(year))
-                ]
-            elif "iso3" in scores.columns and "year" in scores.columns:
-                iso = get_iso(country)
-                score_match = scores[
-                    scores["iso3"].astype(str).eq(str(iso))
-                    & pd.to_numeric(scores["year"], errors="coerce").eq(int(year))
-                ]
-            else:
-                score_match = scores
-            if not score_match.empty:
-                score_value = safe_float(score_match.iloc[0][score_column])
-        except Exception:
-            score_value = None
-
-elif isinstance(scores, dict):
-    for key in ["risk_score", "score", "composite_risk_score"]:
-        if key in scores:
-            score_value = safe_float(scores[key])
-            break
-
-if score_value is None and not current_row.empty:
-    for key in ["risk_score", "score", "composite_risk_score"]:
-        if key in current_row.index:
-            score_value = safe_float(current_row[key])
-            break
-
-if score_value is None:
-    score_value = 0.0
-
-band = score_band(score_value)
-score_color = band_color(band)
-
-coverage_value = None
-
-if not current_row.empty:
-    for key in ["completeness", "data_completeness", "coverage", "coverage_pct"]:
-        if key in current_row.index:
-            coverage_value = safe_float(current_row[key])
-            break
-
-if coverage_value is None and isinstance(scores, pd.DataFrame):
-    completeness_col = find_completeness_column(scores)
-    if completeness_col and not scores.empty:
-        try:
-            coverage_value = safe_float(scores.iloc[0][completeness_col])
-        except Exception:
-            pass
-
-if coverage_value is None:
-    coverage_value = float("nan")
-
+report = generate_report(
+    country_name=get_country_label(country),
+    country_iso3=country,
+    year=int(year),
+    scores=scores,
+    drivers=drivers,
+    scenario_result=scenario_result,
+    peer_group=[c for c in (peer_group or []) if c != country],
+)
 
 # ============================================================================
 # HERO
@@ -1363,7 +1345,7 @@ with k3:
         if score_column and "year" in scores.columns:
             try:
                 prior = scores[
-                    (scores["country"].astype(str).eq(str(country)))
+                    (scores["country_iso3"].astype(str).eq(str(country)))
                     & (pd.to_numeric(scores["year"], errors="coerce") == int(year) - 1)
                 ]
                 if not prior.empty:
