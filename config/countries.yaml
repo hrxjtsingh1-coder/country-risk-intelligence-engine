@@ -1,0 +1,125 @@
+countries:
+  - iso3: USA
+    name: United States
+    region: North America
+    income: High income
+    monetary_union: null
+  - iso3: CAN
+    name: Canada
+    region: North America
+    income: High income
+    monetary_union: null
+  - iso3: GBR
+    name: United Kingdom
+    region: Europe
+    income: High income
+    monetary_union: null
+  - iso3: DEU
+    name: Germany
+    region: Europe
+    income: High income
+    monetary_union: EUR
+  - iso3: FRA
+    name: France
+    region: Europe
+    income: High income
+    monetary_union: EUR
+  - iso3: ITA
+    name: Italy
+    region: Europe
+    income: High income
+    monetary_union: EUR
+  - iso3: ESP
+    name: Spain
+    region: Europe
+    income: High income
+    monetary_union: EUR
+  - iso3: IND
+    name: India
+    region: South Asia
+    income: Lower middle income
+    monetary_union: null
+  - iso3: CHN
+    name: China
+    region: East Asia & Pacific
+    income: Upper middle income
+    monetary_union: null
+  - iso3: JPN
+    name: Japan
+    region: East Asia & Pacific
+    income: High income
+    monetary_union: null
+  - iso3: KOR
+    name: Korea, Rep.
+    region: East Asia & Pacific
+    income: High income
+    monetary_union: null
+  - iso3: AUS
+    name: Australia
+    region: East Asia & Pacific
+    income: High income
+    monetary_union: null
+  - iso3: BRA
+    name: Brazil
+    region: Latin America & Caribbean
+    income: Upper middle income
+    monetary_union: null
+  - iso3: MEX
+    name: Mexico
+    region: Latin America & Caribbean
+    income: Upper middle income
+    monetary_union: null
+  - iso3: ZAF
+    name: South Africa
+    region: Sub-Saharan Africa
+    income: Upper middle income
+    monetary_union: null
+  - iso3: IDN
+    name: Indonesia
+    region: East Asia & Pacific
+    income: Upper middle income
+    monetary_union: null
+  - iso3: TUR
+    name: Türkiye
+    region: Europe & Central Asia
+    income: Upper middle income
+    monetary_union: null
+  - iso3: POL
+    name: Poland
+    region: Europe
+    income: High income
+    monetary_union: EUR
+  - iso3: NLD
+    name: Netherlands
+    region: Europe
+    income: High income
+    monetary_union: EUR
+  - iso3: SGP
+    name: Singapore
+    region: East Asia & Pacific
+    income: High income
+    monetary_union: null
+
+peer_groups:
+  advanced:
+    - USA
+    - CAN
+    - GBR
+    - DEU
+    - FRA
+    - ITA
+    - ESP
+    - JPN
+    - KOR
+    - AUS
+    - NLD
+    - SGP
+  emerging:
+    - IND
+    - CHN
+    - BRA
+    - MEX
+    - ZAF
+    - IDN
+    - TUR
+    - POL
