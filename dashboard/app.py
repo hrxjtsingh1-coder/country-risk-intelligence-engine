@@ -1144,6 +1144,15 @@ peer_groups = (
     if isinstance(countries_cfg, dict)
     else {}
 )
+indicator_catalog = {
+    str(item.get("code")): item
+    for item in (
+        indicators_cfg.get("indicators", [])
+        if isinstance(indicators_cfg, dict)
+        else []
+    )
+    if isinstance(item, dict) and item.get("code")
+}
 
 DATASET_PATH = PANEL_PATH if PANEL_PATH.exists() else DEMO_PANEL_PATH
 USING_DEMO_DATA = DATASET_PATH == DEMO_PANEL_PATH
@@ -1257,6 +1266,21 @@ def normalize_band(value):
 
 def band_color(value):
     return BAND_COLORS_UI.get(normalize_band(value), COLORS["orange"])
+
+
+def indicator_metadata(code):
+    """Return config-backed display metadata for an indicator hover state."""
+    metadata = indicator_catalog.get(str(code), {})
+    return {
+        "label": str(metadata.get("label", code)),
+        "unit": str(metadata.get("unit", "configured units")),
+        "note": str(
+            metadata.get(
+                "note",
+                "Configured indicator used in the country-risk scoring model.",
+            )
+        ),
+    }
 
 
 def score_pct(score):
@@ -1384,6 +1408,7 @@ def make_plotly_layout(fig, height=360, margin=None):
         margin=margin,
         title=dict(text=""),  # BUG FIX: an unset title rendered as literal "undefined" text
         uirevision="country-risk-intelligence",
+        transition=dict(duration=500, easing="cubic-in-out"),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font=dict(
@@ -1845,10 +1870,44 @@ with right:
             history = history.dropna(subset=["year", score_column]).sort_values("year")
 
             if not history.empty:
+                area_x = history["year"].tolist()
+                area_y = history[score_column].astype(float).tolist()
+
+                # Plotly does not expose CSS-like gradients for SVG area fills.
+                # Layering progressively stronger bands gives the trajectory a
+                # soft gradient that remains responsive and animates with it.
                 fig.add_trace(
                     go.Scatter(
-                        x=history["year"],
-                        y=history[score_column],
+                        x=area_x,
+                        y=[0] * len(area_x),
+                        mode="lines",
+                        line=dict(width=0),
+                        hoverinfo="skip",
+                        showlegend=False,
+                    )
+                )
+                for factor, fillcolor in [
+                    (0.36, "rgba(94,231,242,.018)"),
+                    (0.70, "rgba(94,231,242,.032)"),
+                    (1.00, "rgba(94,231,242,.065)"),
+                ]:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=area_x,
+                            y=[value * factor for value in area_y],
+                            mode="lines",
+                            line=dict(width=0),
+                            fill="tonexty",
+                            fillcolor=fillcolor,
+                            hoverinfo="skip",
+                            showlegend=False,
+                        )
+                    )
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=area_x,
+                        y=area_y,
                         mode="lines+markers",
                         line=dict(
                             color=COLORS["cyan"],
@@ -1863,9 +1922,12 @@ with right:
                                 width=2,
                             ),
                         ),
-                        fill="tozeroy",
-                        fillcolor="rgba(94,231,242,.045)",
-                        hovertemplate="<b>%{x}</b><br>Risk score: %{y:.1f}<extra></extra>",
+                        hovertemplate=(
+                            "<b>%{x}</b><br>"
+                            "Risk score: %{y:.1f} / 100<br>"
+                            "Composite cross-sectional score; higher values indicate "
+                            "greater country risk.<extra></extra>"
+                        ),
                         name="Risk score",
                     )
                 )
@@ -1902,7 +1964,6 @@ with right:
             config={
                 "displayModeBar": False,
                 "responsive": True,
-                "staticPlot": True,
             },
         )
 
@@ -2007,6 +2068,84 @@ with driver_left:
                 )
 
             st.markdown("</div>", unsafe_allow_html=True)
+
+            # Keep the animated CSS bars above as the compact at-a-glance view,
+            # and expose the same drivers as a native Plotly chart for hover,
+            # zoom, and smooth country/year transitions.
+            driver_chart_data = ddf.head(8).copy()
+            driver_labels = []
+            driver_customdata = []
+            driver_colors = []
+
+            for _, item in driver_chart_data.iterrows():
+                code = str(
+                    item.get(
+                        "indicator_code",
+                        item.get("code", item[driver_name_column]),
+                    )
+                )
+                metadata = indicator_metadata(code)
+                label = str(item.get("label", metadata["label"]))
+                raw_value = (
+                    current_row.get(code)
+                    if not current_row.empty and code in current_row.index
+                    else None
+                )
+                raw_display = (
+                    f"{safe_float(raw_value):,.2f}"
+                    if raw_value is not None and not pd.isna(raw_value)
+                    else "n/a"
+                )
+
+                driver_labels.append(label)
+                driver_customdata.append(
+                    [raw_display, metadata["unit"], metadata["note"], code]
+                )
+                driver_colors.append(
+                    COLORS["red"]
+                    if safe_float(item[driver_value_column]) >= 0
+                    else COLORS["green"]
+                )
+
+            driver_fig = go.Figure(
+                go.Bar(
+                    x=driver_chart_data[driver_value_column],
+                    y=driver_labels,
+                    orientation="h",
+                    marker=dict(
+                        color=driver_colors,
+                        line=dict(color="rgba(255,255,255,.08)", width=1),
+                    ),
+                    customdata=driver_customdata,
+                    hovertemplate=(
+                        "<b>%{y}</b><br>"
+                        "Weighted contribution: %{x:+.3f} score points<br>"
+                        "Underlying value: %{customdata[0]} "
+                        "(%{customdata[1]})<br>"
+                        "%{customdata[2]}<extra></extra>"
+                    ),
+                )
+            )
+            driver_fig.add_vline(
+                x=0,
+                line_color="rgba(148,163,184,.25)",
+                line_width=1,
+            )
+            driver_fig.update_xaxes(title="Weighted contribution")
+            driver_fig.update_yaxes(autorange="reversed", title=None)
+            make_plotly_layout(
+                driver_fig,
+                height=max(320, min(520, 150 + 34 * len(driver_labels))),
+                margin=dict(l=8, r=8, t=18, b=8),
+            )
+            st.plotly_chart(
+                driver_fig,
+                width="stretch",
+                config={
+                    "displayModeBar": False,
+                    "responsive": True,
+                },
+            )
 
         else:
             empty_state("Driver output contains no numeric contribution field.")
@@ -2123,10 +2262,13 @@ with peer_left:
 
             if not peers.empty:
                 peers["label"] = peers[country_column].astype(str)
-
-                marker_colors = [
-                    score_color if str(x) == str(country) else "rgba(110,168,255,.55)"
-                    for x in peers["label"]
+                if "risk_band" not in peers.columns:
+                    peers["risk_band"] = peers[score_column].map(score_band)
+                peers["band_color"] = peers["risk_band"].map(band_color)
+                peers["selected"] = peers["label"].astype(str).eq(str(country))
+                marker_line_colors = [
+                    COLORS["cyan"] if selected else "rgba(255,255,255,.08)"
+                    for selected in peers["selected"]
                 ]
 
                 peer_fig.add_trace(
@@ -2135,13 +2277,20 @@ with peer_left:
                         y=peers["label"],
                         orientation="h",
                         marker=dict(
-                            color=marker_colors,
+                            color=peers["band_color"].tolist(),
                             line=dict(
-                                color="rgba(255,255,255,.04)",
+                                color=marker_line_colors,
                                 width=1,
                             ),
                         ),
-                        hovertemplate="%{y}<br>Risk score: %{x:.1f}<extra></extra>",
+                        customdata=peers[["risk_band"]].to_numpy(),
+                        hovertemplate=(
+                            "<b>%{y}</b><br>"
+                            "Risk score: %{x:.1f} / 100<br>"
+                            "Risk band: %{customdata[0]}<br>"
+                            "Composite cross-sectional score; higher values indicate "
+                            "greater country risk.<extra></extra>"
+                        ),
                     )
                 )
 
@@ -2174,7 +2323,6 @@ with peer_left:
             config={
                 "displayModeBar": False,
                 "responsive": True,
-                "staticPlot": True,
             },
         )
 
