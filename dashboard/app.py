@@ -48,6 +48,7 @@ from src.scoring.risk_score import score_panel, top_drivers
 
 import html
 import math
+import re
 import textwrap
 from datetime import datetime
 
@@ -1015,8 +1016,104 @@ div[data-testid="stDataFrame"] {
         transition-duration: .01ms !important;
     }
 }
+/* ============================================================================
+   NEW — ambient background, self-drawing score ring, staggered reveals.
+   Purely additive: nothing above is changed. Everything here degrades
+   gracefully — a browser without @property support just shows the
+   final/static state immediately instead of animating into it, never blank.
+   ============================================================================ */
+
+.aurora {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    pointer-events: none;
+}
+.aurora span {
+    position: absolute;
+    width: 46vw;
+    height: 46vw;
+    border-radius: 50%;
+    filter: blur(90px);
+    opacity: .16;
+    animation: auroraDrift 22s ease-in-out infinite alternate;
+}
+.aurora span:nth-child(1) { background: var(--cyan);   top: -14%; left: -10%; }
+.aurora span:nth-child(2) { background: var(--violet); bottom: -18%; right: -8%; animation-duration: 26s; animation-delay: -6s; }
+.aurora span:nth-child(3) { background: var(--blue);   top: 30%; left: 60%; width: 34vw; height: 34vw; animation-duration: 30s; animation-delay: -12s; }
+
+@keyframes auroraDrift {
+    from { transform: translate(0, 0) scale(1); }
+    to   { transform: translate(4%, 6%) scale(1.12); }
+}
+
+@property --score-pct {
+    syntax: '<number>';
+    inherits: true;
+    initial-value: 0;
+}
+.score-ring {
+    --score-pct: var(--score-pct-target, 0);
+    animation: scorePulse 4.5s ease-in-out infinite, scoreFillIn 1.3s .1s cubic-bezier(.16,1,.3,1) both;
+}
+@keyframes scoreFillIn {
+    from { --score-pct: 0; }
+    to   { --score-pct: var(--score-pct-target, 0); }
+}
+
+.card:hover { transform: translateY(-3px); }
+
+.driver-row { animation: signalIn .5s ease both; }
+.driver-row:nth-child(1) { animation-delay: .04s; }
+.driver-row:nth-child(2) { animation-delay: .10s; }
+.driver-row:nth-child(3) { animation-delay: .16s; }
+.driver-row:nth-child(4) { animation-delay: .22s; }
+.driver-row:nth-child(5) { animation-delay: .28s; }
+.driver-row:nth-child(6) { animation-delay: .34s; }
+.driver-row:nth-child(7) { animation-delay: .40s; }
+.driver-row:nth-child(8) { animation-delay: .46s; }
+
+.signal:nth-child(1) { animation-delay: .04s; }
+.signal:nth-child(2) { animation-delay: .09s; }
+.signal:nth-child(3) { animation-delay: .14s; }
+.signal:nth-child(4) { animation-delay: .19s; }
+.signal:nth-child(5) { animation-delay: .24s; }
+.signal:nth-child(6) { animation-delay: .29s; }
+.signal:nth-child(7) { animation-delay: .34s; }
+.signal:nth-child(8) { animation-delay: .39s; }
+
+.peer-highlight:nth-child(1) { animation-delay: .03s; }
+.peer-highlight:nth-child(2) { animation-delay: .07s; }
+.peer-highlight:nth-child(3) { animation-delay: .11s; }
+.peer-highlight:nth-child(4) { animation-delay: .15s; }
+.peer-highlight:nth-child(5) { animation-delay: .19s; }
+.peer-highlight:nth-child(6) { animation-delay: .23s; }
+.peer-highlight:nth-child(7) { animation-delay: .27s; }
+
+.meta-item { animation: cardIn .5s ease both; }
+.meta-item:nth-child(1) { animation-delay: .03s; }
+.meta-item:nth-child(2) { animation-delay: .07s; }
+.meta-item:nth-child(3) { animation-delay: .11s; }
+.meta-item:nth-child(4) { animation-delay: .15s; }
+.meta-item:nth-child(5) { animation-delay: .19s; }
+.meta-item:nth-child(6) { animation-delay: .23s; }
+.meta-item:nth-child(7) { animation-delay: .27s; }
+.meta-item:nth-child(8) { animation-delay: .31s; }
+
+/* Formatted analyst commentary (see markdown_to_html() in Python) */
+.intel-body p { margin: 0 0 12px; }
+.intel-body p:last-child { margin-bottom: 0; }
+.intel-body strong { color: #f4f7fb; font-weight: 700; }
+.intel-body ul { margin: 4px 0 14px; padding-left: 18px; }
+.intel-body li { margin-bottom: 6px; animation: signalIn .45s ease both; }
 </style>
 """,
+    unsafe_allow_html=True,
+)
+
+st.markdown(
+    '<div class="aurora"><span></span><span></span><span></span></div>',
     unsafe_allow_html=True,
 )
 
@@ -1102,6 +1199,53 @@ def fmt_delta(value, digits=1):
 
 def esc(value):
     return html.escape(str(value))
+
+
+def markdown_to_html(text: str) -> str:
+    """
+    BUG FIX: generate_report() returns Markdown (**bold** headers, "- " bullet
+    lists, blank-line-separated paragraphs). The old code did `esc(report)`
+    straight into a raw <div>, which escapes HTML but does nothing to
+    Markdown syntax and collapses all the newlines — so the Analyst
+    Intelligence card showed one flattened line with literal ** and - marks
+    instead of headings and a bullet list. This is a tiny, deliberately
+    narrow converter for exactly generate_report()'s output shape — not a
+    general Markdown engine.
+    """
+    lines = str(text).split("\n")
+    html_parts = []
+    in_list = False
+
+    def close_list():
+        nonlocal in_list
+        if in_list:
+            html_parts.append("</ul>")
+            in_list = False
+
+    for raw_line in lines:
+        line = raw_line.strip()
+
+        if not line:
+            close_list()
+            continue
+
+        if line.startswith("- "):
+            if not in_list:
+                html_parts.append("<ul>")
+                in_list = True
+            html_parts.append(f"<li>{esc(line[2:])}</li>")
+            continue
+
+        close_list()
+
+        # "**Bold header:**" (with or without trailing text) -> its own line.
+        # `line` is escaped FIRST, then bolded — group(1) is already-escaped
+        # text at this point, so it must NOT be escaped again here.
+        line_html = re.sub(r"\*\*(.+?)\*\*", lambda m: f"<strong>{m.group(1)}</strong>", esc(line))
+        html_parts.append(f"<p>{line_html}</p>")
+
+    close_list()
+    return "\n".join(html_parts)
 
 
 def normalize_band(value):
@@ -1238,6 +1382,7 @@ def make_plotly_layout(fig, height=360, margin=None):
     fig.update_layout(
         height=height,
         margin=margin,
+        title=dict(text=""),  # BUG FIX: an unset title rendered as literal "undefined" text
         uirevision="country-risk-intelligence",
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
@@ -1656,7 +1801,7 @@ with left:
             <div class="card-label">RISK SCORE GAUGE</div>
             <div class="score-wrap">
                 <div class="score-ring"
-                     style="--score-pct:{score_pct(score_value)};--score-color:{score_color};">
+                     style="--score-pct-target:{score_pct(score_value)};--score-color:{score_color};">
                     <div class="score-inner">
                         <div class="score-number">{fmt_number(score_value,0)}</div>
                         <div class="score-band">{esc(band.upper())}</div>
@@ -2240,18 +2385,21 @@ if scenario is not None:
 
             scenario_target = None
 
+            # BUG FIX: the real run_shock_scenario() return shape has no
+            # "targets" dict — the per-indicator estimates live in a LIST
+            # under "indicator_deltas", each item shaped like
+            # {"indicator_code": ..., "baseline_value": ..., "estimated_delta": ...}.
+            # The old lookup here checked for a "targets" key that never
+            # existed, so scenario_target was always None and every card
+            # silently fell back to the "engine output" placeholder text.
             if isinstance(scenario, dict):
-                target_container = scenario.get("targets", scenario)
-                if isinstance(target_container, dict):
-                    if code in target_container:
-                        raw = target_container[code]
-                        if isinstance(raw, dict):
-                            for key in ["scenario", "value", "new", "shocked"]:
-                                if key in raw:
-                                    scenario_target = raw[key]
-                                    break
-                        else:
-                            scenario_target = raw
+                for item in scenario.get("indicator_deltas", []):
+                    if isinstance(item, dict) and item.get("indicator_code") == code:
+                        delta = item.get("estimated_delta")
+                        base = item.get("baseline_value")
+                        if delta is not None and not pd.isna(delta) and base is not None and not pd.isna(base):
+                            scenario_target = base + delta
+                        break
 
             st.markdown(
                 f"""
@@ -2324,7 +2472,7 @@ st.markdown(
             </div>
         </div>
         <div class="intel-body">
-            {esc(report)}
+            {markdown_to_html(report)}
         </div>
     </div>
     """,
