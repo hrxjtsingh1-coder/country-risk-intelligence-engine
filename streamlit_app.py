@@ -1,4 +1,5 @@
 """Stable Streamlit Cloud entrypoint."""
-from dashboard.public_app import main
+import runpy
+from pathlib import Path
 
-main()
+runpy.run_path(str(Path(__file__).resolve().parent / "dashboard" / "app.py"), run_name="__main__")
