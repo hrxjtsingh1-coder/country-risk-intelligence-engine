@@ -1506,12 +1506,12 @@ with st.sidebar:
     st.markdown(
         f"""
         <div style="padding:4px 4px 16px;">
-            <div class="kicker">RISK ENGINE / {DATA_STATE}</div>
+            <div class="kicker">COUNTRY RISK INTELLIGENCE</div>
             <div style="font-family:'Space Grotesk';font-size:21px;font-weight:700;">
-                Control Room
+                Explore
             </div>
             <div class="micro" style="margin-top:7px;">
-                Select the analytical slice.
+                Select a country and year, then follow the research flow below.
             </div>
         </div>
         """,
@@ -1546,21 +1546,27 @@ with st.sidebar:
         key="year_selector",
     )
 
+    peer_view = st.selectbox(
+        "Comparison group",
+        ["Global panel", "Advanced economies", "Emerging economies"],
+        help="Controls the comparison context described in the peer section.",
+    )
+
     st.markdown("---")
 
     st.markdown(
-        '<div class="kicker" style="margin-bottom:7px;">SCENARIO LAB</div>',
+        '<div class="kicker" style="margin-bottom:7px;">EXPLORE A HISTORICAL SENSITIVITY</div>',
         unsafe_allow_html=True,
     )
 
     shock = st.number_input(
-        "US annual-average federal-funds-rate change (bps)",
+        "US rate-change shock (bps)",
         min_value=-1000,
         max_value=1000,
         value=0,
         step=25,
         key="policy_rate_shock",
-        help="US-only enrichment: shock to the change in annual-average DFF, not a direct global policy-rate shock.",
+        help="US-only change in annual-average federal-funds rate. This is a historical sensitivity, not a forecast.",
     )
 
     st.markdown("---")
@@ -1854,6 +1860,19 @@ with k4:
 
 
 # ============================================================================
+# WHAT DOES THIS MEAN? — the first interpretation a non-technical user sees.
+# ============================================================================
+upward = country_drivers[country_drivers["weighted_contribution"] > 0] if not country_drivers.empty else pd.DataFrame()
+mitigating = country_drivers[country_drivers["weighted_contribution"] < 0] if not country_drivers.empty else pd.DataFrame()
+upward_labels = ", ".join(upward["label"].head(3).astype(str)) if not upward.empty else "no available upward contributors"
+st.markdown(
+    f'''<div class="card" style="margin-top:22px;">
+      <div class="card-label">WHAT DOES THIS MEAN?</div>
+      <div style="font-size:16px;line-height:1.65;color:#dbe5ef;margin-top:8px;"><b>{esc(country_label)}</b>'s score of <b>{fmt_number(score_value,1)}</b> is in the <b>{esc(band.upper())}</b> relative-risk band for {int(year)}. The strongest upward signals are <b>{esc(upward_labels)}</b>. {len(mitigating)} available indicators provide mitigating signals.</div>
+      <div class="card-caption" style="margin-top:10px;">This is relative positioning within the available comparison panel—not a probability of default, credit rating, or investment recommendation. Higher means greater relative risk under the configured methodology.</div>
+    </div>''', unsafe_allow_html=True)
+
+# ============================================================================
 # RISK SCORE + TRAJECTORY
 # ============================================================================
 
@@ -2055,6 +2074,7 @@ with driver_left:
         ddf = country_drivers.copy()
 
         numeric_candidates = [
+            "weighted_contribution",
             "contribution",
             "impact",
             "weight",
@@ -2070,6 +2090,7 @@ with driver_left:
 
         driver_name_column = None
         for candidate in [
+            "label",
             "indicator",
             "indicator_code",
             "code",
@@ -2110,13 +2131,13 @@ with driver_left:
                         <div>
                             <div class="driver-meta">
                                 <span class="driver-name">{esc(name)}</span>
-                                <span>{fmt_delta(value,2)}</span>
+                                <span>{'Risk increaser' if value > 0 else 'Risk mitigator'} · {fmt_delta(value,2)} pts</span>
                             </div>
                             <div class="driver-bar">
                                 <div class="driver-fill" style="width:{width:.1f}%"></div>
                             </div>
                         </div>
-                        <div class="driver-score">{fmt_number(value,2)}</div>
+                        <div class="driver-score">{fmt_delta(value,2)}</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
