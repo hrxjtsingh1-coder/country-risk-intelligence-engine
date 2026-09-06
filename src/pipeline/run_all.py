@@ -10,8 +10,10 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
+from datetime import datetime, timezone
 
 import yaml
 
@@ -78,6 +80,7 @@ def main():
         f"{len(iso3_codes)} countries, {args.start}-{args.end}..."
     )
 
+    started_at = datetime.now(timezone.utc)
     long_panel = build_long_panel(iso3_codes, args.start, args.end)
 
     if long_panel.empty:
@@ -101,6 +104,25 @@ def main():
     out_dir = ROOT / "data" / "processed"
     out_dir.mkdir(parents=True, exist_ok=True)
     wide_panel.to_csv(out_dir / "panel_wide.csv", index=False)
+    configured_codes = [str(item.get("code")) for item in yaml.safe_load((ROOT / "config" / "indicators.yaml").read_text()).get("indicators", [])]
+    metadata = {
+        "run_id": started_at.strftime("live-%Y%m%dT%H%M%SZ"),
+        "mode": "LIVE",
+        "started_at": started_at.isoformat(),
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+        "retrieved_at": datetime.now(timezone.utc).isoformat(),
+        "requested_period": f"{args.start}–{args.end}",
+        "latest_available_observation": int(wide_panel["year"].max()),
+        "country_count": int(wide_panel["country_iso3"].nunique()),
+        "indicator_count": int(len([c for c in configured_codes if c in wide_panel.columns])),
+        "observations_received": int(long_panel.shape[0]),
+        "observations_missing": int(max(0, len(iso3_codes) * len(configured_codes) * (args.end - args.start + 1) - long_panel.shape[0])),
+        "sources": ["World Bank", "FRED (US-only enrichment)"],
+        "source_urls": ["https://api.worldbank.org/v2/", "https://fred.stlouisfed.org/graph/fredgraph.csv"],
+        "methodology_version": "1.1.0",
+        "config_version": "config/indicators.yaml",
+    }
+    (out_dir / "data_metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
     print("[2/6] Scoring...")
     scores, drivers = score_panel(wide_panel)

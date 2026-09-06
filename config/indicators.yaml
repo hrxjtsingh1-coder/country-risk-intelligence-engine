@@ -6,6 +6,9 @@ indicators:
     risk_direction: 1
     source: world_bank
     world_bank: FP.CPI.TOTL.ZG
+    source_url: "https://data.worldbank.org/indicator/FP.CPI.TOTL.ZG"
+    frequency: annual
+    transformation: "Published annual percent change; no additional transformation."
     unit: "% YoY"
     note: "Annual consumer-price inflation, measuring the change in the CPI basket."
     min: -20
@@ -18,6 +21,9 @@ indicators:
     risk_direction: -1
     source: world_bank
     world_bank: NY.GDP.MKTP.KD.ZG
+    source_url: "https://data.worldbank.org/indicator/NY.GDP.MKTP.KD.ZG"
+    frequency: annual
+    transformation: "Published annual percent change; no additional transformation."
     unit: "% YoY"
     note: "Annual real GDP growth; stronger growth generally lowers macro risk."
     min: -40
@@ -30,6 +36,9 @@ indicators:
     risk_direction: 1
     source: world_bank
     world_bank: SL.UEM.TOTL.ZS
+    source_url: "https://data.worldbank.org/indicator/SL.UEM.TOTL.ZS"
+    frequency: annual
+    transformation: "Published annual value; no additional transformation."
     unit: "% of labor force"
     note: "Share of the labor force without work but available for employment."
     min: 0
@@ -38,10 +47,13 @@ indicators:
   - code: GC.DOD.TOTL.GD.ZS
     label: Public debt
     category: Fiscal
-    weight: 0.14
+    weight: 0.18
     risk_direction: 1
     source: world_bank
     world_bank: GC.DOD.TOTL.GD.ZS
+    source_url: "https://data.worldbank.org/indicator/GC.DOD.TOTL.GD.ZS"
+    frequency: annual
+    transformation: "Published annual value; no additional transformation."
     unit: "% of GDP"
     note: "General-government gross debt relative to the size of the economy."
     min: 0
@@ -54,6 +66,9 @@ indicators:
     risk_direction: -1
     source: world_bank
     world_bank: BN.CAB.XOKA.GD.ZS
+    source_url: "https://data.worldbank.org/indicator/BN.CAB.XOKA.GD.ZS"
+    frequency: annual
+    transformation: "Published annual value; no additional transformation."
     unit: "% of GDP"
     note: "Current-account balance relative to GDP; deficits indicate external financing needs."
     min: -100
@@ -66,6 +81,9 @@ indicators:
     risk_direction: -1
     source: world_bank
     world_bank: FI.RES.TOTL.MO
+    source_url: "https://data.worldbank.org/indicator/FI.RES.TOTL.MO"
+    frequency: annual
+    transformation: "Published annual value; no additional transformation."
     unit: "months of imports"
     note: "Foreign-exchange reserves measured by the months of imports they can cover."
     min: 0
@@ -78,6 +96,9 @@ indicators:
     risk_direction: 1
     source: world_bank
     world_bank: DT.DOD.DECT.GN.ZS
+    source_url: "https://data.worldbank.org/indicator/DT.DOD.DECT.GN.ZS"
+    frequency: annual
+    transformation: "Published annual value; no additional transformation."
     unit: "% of GNI"
     note: "Total external debt stocks relative to gross national income."
     min: 0
@@ -90,6 +111,9 @@ indicators:
     risk_direction: 1
     source: world_bank
     world_bank: FB.AST.NPER.ZS
+    source_url: "https://data.worldbank.org/indicator/FB.AST.NPER.ZS"
+    frequency: annual
+    transformation: "Published annual value; no additional transformation."
     unit: "% of gross loans"
     note: "Bank non-performing loans as a share of total gross loans."
     min: 0
@@ -101,6 +125,10 @@ indicators:
     weight: 0.06
     risk_direction: 1
     source: derived
+    source_url: "https://data.worldbank.org/indicator/PA.NUS.FCRF"
+    source_series: PA.NUS.FCRF
+    frequency: annual
+    transformation: "Year-over-year percent change in official exchange rate (LCU per USD). Positive implies depreciation against USD."
     unit: "% YoY"
     note: "Year-over-year currency depreciation; positive values indicate a weaker currency."
     min: -100
@@ -109,24 +137,15 @@ indicators:
   - code: POLICY_RATE_YOY_CHANGE_BPS
     label: Policy-rate change
     category: Monetary
-    weight: 0.04
-    risk_direction: 1
-    source: fred
-    fred: DFF
-    unit: "basis points YoY"
-    note: "Year-over-year change in the policy rate; positive values indicate tightening."
-    min: -1000
-    max: 1000
-
-  # Optional source placeholders. If an external endpoint is unavailable,
-  # the collector leaves them missing instead of inventing observations.
-  - code: BIS_CREDIT_GAP
-    label: Credit-to-GDP gap
-    category: Credit
     weight: 0.00
     risk_direction: 1
-    source: bis
-    unit: "percentage points"
-    note: "Credit-to-GDP gap relative to its long-term trend."
-    min: -100
-    max: 100
+    source: fred_us_only
+    fred: DFF
+    source_url: "https://fred.stlouisfed.org/series/DFF"
+    source_series: DFF
+    frequency: daily aggregated to annual mean
+    transformation: "US-only: change in annual average Effective Federal Funds Rate, converted to basis points. It is not a globally comparable policy-rate signal."
+    unit: "basis points YoY"
+    note: "US-only enrichment. Change in annual-average Effective Federal Funds Rate, not a direct policy-rate level or a multi-country signal. Excluded from composite score."
+    min: -1000
+    max: 1000

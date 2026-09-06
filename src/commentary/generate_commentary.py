@@ -126,7 +126,7 @@ def generate_report(
 
 
 def _format_shock(sc: dict) -> str:
-    driver_label = {"POLICY_RATE_YOY_CHANGE_BPS": "policy rates increase by"}.get(sc["driver_code"], f"{sc['driver_code']} moves by")
+    driver_label = {"POLICY_RATE_YOY_CHANGE_BPS": "the US annual-average federal-funds-rate change increases by"}.get(sc["driver_code"], f"{sc['driver_code']} moves by")
     unit = "bps" if sc["driver_code"] == "POLICY_RATE_YOY_CHANGE_BPS" else ""
     return f"If {driver_label} {sc['shock_amount']:+.0f}{unit} from current levels..."
 
@@ -136,15 +136,15 @@ def _format_impact(sc: dict) -> str:
         return "Insufficient historical data in this panel to estimate a reliable effect — see Limitations."
     direction = "deterioration" if sc["delta"] > 0 else "improvement"
     parts = [
-        f"Estimated {direction} in the composite risk score of {abs(sc['delta']):.1f} points "
+        f"Under this historical-sensitivity stress test, the model estimates a {direction} in the composite risk score of {abs(sc['delta']):.1f} points "
         f"({sc['baseline_score']:.0f} -> {sc['scenario_score']:.0f}), "
         f"{'moving the country into the ' + sc['scenario_band'] + ' band' if sc['scenario_band'] != sc['baseline_band'] else 'staying within the ' + sc['scenario_band'] + ' band'}."
     ]
     for d in sc["indicator_deltas"]:
-        confidence = "low-confidence" if d["r_squared"] < 0.1 else "moderate-confidence"
+        confidence = "low-information" if d["r_squared"] < 0.1 else "moderate-information"
         parts.append(
             f"Channel: {d['indicator_code']} estimated to move by {d['estimated_delta']:+.2f} "
-            f"({confidence}, R²={d['r_squared']:.2f}, n={d['n_obs']})."
+            f"({confidence}, pooled-panel R²={d['r_squared']:.2f}, n={d['n_obs']})."
         )
     return " ".join(parts)
 

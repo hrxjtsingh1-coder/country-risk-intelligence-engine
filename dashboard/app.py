@@ -47,6 +47,7 @@ from src.scoring.risk_score import score_panel, top_drivers
 # ============================================================================
 
 import html
+import json
 import math
 import re
 import textwrap
@@ -1138,6 +1139,13 @@ def load_panel(panel_path: Path):
     return pd.read_csv(panel_path)
 
 
+@st.cache_data(show_spinner=False)
+def load_data_metadata(metadata_path: Path):
+    if not metadata_path.exists():
+        return {}
+    return json.loads(metadata_path.read_text(encoding="utf-8"))
+
+
 countries_cfg, indicators_cfg = load_configurations()
 peer_groups = (
     countries_cfg.get("peer_groups", {})
@@ -1154,32 +1162,67 @@ indicator_catalog = {
     if isinstance(item, dict) and item.get("code")
 }
 
-DATASET_PATH = PANEL_PATH if PANEL_PATH.exists() else DEMO_PANEL_PATH
-USING_DEMO_DATA = DATASET_PATH == DEMO_PANEL_PATH
+LIVE_METADATA = load_data_metadata(PROCESSED_DIR / "data_metadata.json")
+live_ready = PANEL_PATH.exists() and LIVE_METADATA.get("mode") == "LIVE"
+if "open_demo_dataset" not in st.session_state:
+    st.session_state.open_demo_dataset = False
+if live_ready:
+    DATASET_PATH = PANEL_PATH
+    DATA_STATE = "LIVE"
+elif st.session_state.open_demo_dataset:
+    DATASET_PATH = DEMO_PANEL_PATH
+    DATA_STATE = "DEMO"
+else:
+    DATASET_PATH = None
+    DATA_STATE = "ERROR / UNAVAILABLE"
+USING_DEMO_DATA = DATA_STATE == "DEMO"
 
-if not DATASET_PATH.exists():
+if DATASET_PATH is None or not DATASET_PATH.exists():
     st.markdown(
         """
         <div class="card" style="margin-top:24px;">
-            <div class="card-label">ENGINE WAITING FOR DATA</div>
-            <div class="card-value" style="font-size:24px;">panel_wide.csv not found</div>
+            <div class="card-label">LIVE DATA UNAVAILABLE</div>
+            <div class="card-value" style="font-size:24px;">No verified live data vintage is available</div>
             <div class="card-caption" style="margin-top:10px;">
-                Run <code>python -m src.pipeline.run_all</code> once to build the
-                dashboard-ready panel from the configured public data sources.
+                Run <code>python -m src.pipeline.run_all</code> to retrieve public data,
+                or explicitly open the synthetic demo dataset below.
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
+    if st.button("Open Demo Dataset", type="primary"):
+        st.session_state.open_demo_dataset = True
+        st.rerun()
     st.stop()
 
 if USING_DEMO_DATA:
-    st.info(
-        "Demo mode is active: this dashboard is using the bundled synthetic "
-        "panel. Run the live pipeline to replace it with World Bank/FRED data."
-    )
+    st.error("DEMO DATA — SYNTHETIC DATASET. Not suitable for economic or investment decisions.")
+else:
+    st.success("LIVE PUBLIC DATA — verified pipeline output loaded.")
 
 panel = load_panel(DATASET_PATH)
+
+# This is intentionally rendered above every analytical surface.  A user
+# should never have to infer whether numbers are synthetic or retrieved.
+mode_title = "DEMO DATA — SYNTHETIC DATASET" if USING_DEMO_DATA else "LIVE PUBLIC DATA"
+mode_detail = (
+    "Synthetic fixture for product demonstration only. Not suitable for economic or investment decisions."
+    if USING_DEMO_DATA
+    else f"Retrieved: {LIVE_METADATA.get('retrieved_at', 'not recorded')} · "
+         f"Requested period: {LIVE_METADATA.get('requested_period', 'not recorded')} · "
+         f"Countries: {LIVE_METADATA.get('country_count', 'not recorded')} · "
+         f"Indicators: {LIVE_METADATA.get('indicator_count', 'not recorded')}"
+)
+mode_colour = COLORS["orange"] if USING_DEMO_DATA else COLORS["green"]
+st.markdown(
+    f'''<div class="card" style="border-color:{mode_colour};margin:0 0 18px;">
+        <div class="card-label" style="color:{mode_colour};">DATA MODE / {html.escape(DATA_STATE)}</div>
+        <div style="font-family:'Space Grotesk';font-weight:700;font-size:18px;margin-top:5px;">{mode_title}</div>
+        <div class="card-caption" style="margin-top:7px;">{html.escape(mode_detail)}</div>
+    </div>''',
+    unsafe_allow_html=True,
+)
 
 
 # ============================================================================
@@ -1204,6 +1247,12 @@ def fmt_delta(value, digits=1):
     value = safe_float(value)
     sign = "+" if value > 0 else ""
     return f"{sign}{value:,.{digits}f}"
+
+
+def fmt_proportion(value, digits=1):
+    """Central display contract for fractions stored on the 0–1 scale."""
+    value = safe_float(value, default=float("nan"))
+    return "—" if pd.isna(value) else f"{value * 100:,.{digits}f}%"
 
 
 def esc(value):
@@ -1457,12 +1506,12 @@ with st.sidebar:
     st.markdown(
         f"""
         <div style="padding:4px 4px 16px;">
-            <div class="kicker">RISK ENGINE / {('DEMO PANEL' if USING_DEMO_DATA else 'LIVE PANEL')}</div>
+            <div class="kicker">COUNTRY RISK INTELLIGENCE</div>
             <div style="font-family:'Space Grotesk';font-size:21px;font-weight:700;">
-                Control Room
+                Explore
             </div>
             <div class="micro" style="margin-top:7px;">
-                Select the analytical slice.
+                Select a country and year, then follow the research flow below.
             </div>
         </div>
         """,
@@ -1497,21 +1546,27 @@ with st.sidebar:
         key="year_selector",
     )
 
+    peer_view = st.selectbox(
+        "Comparison group",
+        ["Global panel", "Advanced economies", "Emerging economies"],
+        help="Controls the comparison context described in the peer section.",
+    )
+
     st.markdown("---")
 
     st.markdown(
-        '<div class="kicker" style="margin-bottom:7px;">SCENARIO LAB</div>',
+        '<div class="kicker" style="margin-bottom:7px;">EXPLORE A HISTORICAL SENSITIVITY</div>',
         unsafe_allow_html=True,
     )
 
     shock = st.number_input(
-        "Policy rate YoY change (bps)",
+        "US rate-change shock (bps)",
         min_value=-1000,
         max_value=1000,
         value=0,
         step=25,
         key="policy_rate_shock",
-        help="Original scenario driver: POLICY_RATE_YOY_CHANGE_BPS",
+        help="US-only change in annual-average federal-funds rate. This is a historical sensitivity, not a forecast.",
     )
 
     st.markdown("---")
@@ -1530,10 +1585,10 @@ with st.sidebar:
     st.markdown("---")
 
     st.markdown(
-        """
+        f"""
         <div class="micro">
             ENGINE STATUS<br>
-            <span style="color:#54d69a;">● ONLINE</span><br><br>
+            <span style="color:{COLORS['yellow'] if USING_DEMO_DATA else COLORS['green']};">● {esc(DATA_STATE)}</span><br><br>
             Analytics remain deterministic and traceable.
             Presentation is layered on top of the existing engine.
         </div>
@@ -1638,6 +1693,7 @@ report = generate_report(
 iso = get_iso(country)
 country_label = get_country_label(country)
 generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+vintage = LIVE_METADATA.get("retrieved_at", "Synthetic fixture — no retrieval timestamp") if not USING_DEMO_DATA else "Synthetic fixture — no retrieval timestamp"
 
 st.markdown(
     f"""
@@ -1647,7 +1703,7 @@ st.markdown(
                 <div class="kicker">{APP_KICKER}</div>
                 <h1>Country Risk<br><span>Intelligence Engine</span></h1>
                 <div class="hero-copy">
-                    A decision-oriented macro risk cockpit combining country-level
+                    A relative-risk research cockpit combining country-level
                     indicators, deterministic scoring, driver decomposition,
                     peer context and transparent scenario analysis.
                 </div>
@@ -1679,6 +1735,11 @@ st.markdown(
     </div>
     """,
     unsafe_allow_html=True,
+)
+
+st.caption(
+    "Scores are relative to the selected panel and methodology. A score of 70 does not mean a 70% probability of loss or default. "
+    f"Data vintage: {vintage}."
 )
 
 
@@ -1718,7 +1779,7 @@ with k1:
     )
 
 with k2:
-    coverage_text = "—" if pd.isna(coverage_value) else f"{fmt_number(coverage_value,1)}%"
+    coverage_text = fmt_proportion(coverage_value)
     st.markdown(
         f"""
         <div class="card kpi">
@@ -1797,6 +1858,19 @@ with k4:
         unsafe_allow_html=True,
     )
 
+
+# ============================================================================
+# WHAT DOES THIS MEAN? — the first interpretation a non-technical user sees.
+# ============================================================================
+upward = country_drivers[country_drivers["weighted_contribution"] > 0] if not country_drivers.empty else pd.DataFrame()
+mitigating = country_drivers[country_drivers["weighted_contribution"] < 0] if not country_drivers.empty else pd.DataFrame()
+upward_labels = ", ".join(upward["label"].head(3).astype(str)) if not upward.empty else "no available upward contributors"
+st.markdown(
+    f'''<div class="card" style="margin-top:22px;">
+      <div class="card-label">WHAT DOES THIS MEAN?</div>
+      <div style="font-size:16px;line-height:1.65;color:#dbe5ef;margin-top:8px;"><b>{esc(country_label)}</b>'s score of <b>{fmt_number(score_value,1)}</b> is in the <b>{esc(band.upper())}</b> relative-risk band for {int(year)}. The strongest upward signals are <b>{esc(upward_labels)}</b>. {len(mitigating)} available indicators provide mitigating signals.</div>
+      <div class="card-caption" style="margin-top:10px;">This is relative positioning within the available comparison panel—not a probability of default, credit rating, or investment recommendation. Higher means greater relative risk under the configured methodology.</div>
+    </div>''', unsafe_allow_html=True)
 
 # ============================================================================
 # RISK SCORE + TRAJECTORY
@@ -2000,6 +2074,7 @@ with driver_left:
         ddf = country_drivers.copy()
 
         numeric_candidates = [
+            "weighted_contribution",
             "contribution",
             "impact",
             "weight",
@@ -2015,6 +2090,7 @@ with driver_left:
 
         driver_name_column = None
         for candidate in [
+            "label",
             "indicator",
             "indicator_code",
             "code",
@@ -2055,13 +2131,13 @@ with driver_left:
                         <div>
                             <div class="driver-meta">
                                 <span class="driver-name">{esc(name)}</span>
-                                <span>{fmt_delta(value,2)}</span>
+                                <span>{'Risk increaser' if value > 0 else 'Risk mitigator'} · {fmt_delta(value,2)} pts</span>
                             </div>
                             <div class="driver-bar">
                                 <div class="driver-fill" style="width:{width:.1f}%"></div>
                             </div>
                         </div>
-                        <div class="driver-score">{fmt_number(value,2)}</div>
+                        <div class="driver-score">{fmt_delta(value,2)}</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
@@ -2412,6 +2488,15 @@ if scenario_error is not None:
     st.warning(f"Scenario engine returned an error: {scenario_error}")
 
 if scenario is not None:
+    scenario_assessment = esc(str(scenario.get("information_assessment", "INSUFFICIENT DATA"))) if isinstance(scenario, dict) else "UNAVAILABLE"
+    scenario_window = esc(str(scenario.get("estimation_window", "not recorded"))) if isinstance(scenario, dict) else "not recorded"
+    scenario_oos = bool(scenario.get("out_of_sample_shock", False)) if isinstance(scenario, dict) else False
+    st.info(
+        f"Historical-sensitivity stress test · Information assessment: {scenario_assessment} · "
+        f"Estimation window: {scenario_window}. "
+        + ("OUT-OF-SAMPLE SHOCK: the shocked driver lies outside the observed panel range. " if scenario_oos else "")
+        + "This pooled-panel association is exploratory, not a causal forecast."
+    )
     sc1, sc2, sc3 = st.columns(3)
 
     # Display-only extraction: the underlying scenario object is untouched.
@@ -2632,6 +2717,27 @@ st.markdown(
 # DATA COVERAGE / METADATA
 # ============================================================================
 
+active_indicators = [item for item in indicator_catalog.values() if safe_float(item.get("weight")) > 0]
+expected_observations = len(available_countries(panel)) * len(available_years(panel)) * len(active_indicators)
+received_observations = int(panel[[item["code"] for item in active_indicators if item["code"] in panel.columns]].notna().sum().sum())
+quality_coverage = received_observations / expected_observations if expected_observations else float("nan")
+duplicate_rows = int(panel.duplicated(["country_iso3", "year"]).sum())
+range_errors = 0
+for item in active_indicators:
+    if item["code"] in panel.columns:
+        values = pd.to_numeric(panel[item["code"]], errors="coerce")
+        range_errors += int(((values < safe_float(item.get("min"), -np.inf)) | (values > safe_float(item.get("max"), np.inf))).sum())
+
+st.markdown("<div class='section-title'>Data quality</div><div class='section-sub'>Coverage and validation checks for the loaded panel.</div>", unsafe_allow_html=True)
+quality = pd.DataFrame([
+    {"Check": "Coverage", "Value": fmt_proportion(quality_coverage), "Status": "PASS" if quality_coverage >= .95 else "WARNING"},
+    {"Check": "Missing observations", "Value": f"{max(0, expected_observations-received_observations):,}", "Status": "PASS" if received_observations == expected_observations else "WARNING"},
+    {"Check": "Duplicate country-years", "Value": f"{duplicate_rows:,}", "Status": "PASS" if duplicate_rows == 0 else "FAIL"},
+    {"Check": "Configured range errors", "Value": f"{range_errors:,}", "Status": "PASS" if range_errors == 0 else "WARNING"},
+    {"Check": "Source state", "Value": DATA_STATE, "Status": "WARNING" if USING_DEMO_DATA else "PASS"},
+])
+st.dataframe(quality, width="stretch", hide_index=True)
+
 st.markdown(
     """
     <div class="section-head">
@@ -2653,9 +2759,11 @@ metadata = [
     ("YEAR", year),
     ("PANEL ROWS", f"{len(panel):,}"),
     ("SCORE BAND", band),
-    ("DATA COVERAGE", "—" if pd.isna(coverage_value) else f"{coverage_value:.1f}%"),
+    ("DATA COVERAGE", fmt_proportion(coverage_value)),
     ("SHOCK", f"{shock:+.0f} bps"),
     ("UI REFRESHED", generated_at),
+    ("DATA VINTAGE", vintage),
+    ("SOURCES", ", ".join(LIVE_METADATA.get("sources", ["Synthetic demo fixture"])) if not USING_DEMO_DATA else "Synthetic demo fixture"),
 ]
 
 meta_html = '<div class="card"><div class="metadata">'
@@ -2708,6 +2816,9 @@ with export_left:
     st.caption(
         "Exports the currently loaded dashboard panel exactly as provided to the UI."
     )
+    st.download_button("Download risk scores CSV", scores.to_csv(index=False).encode("utf-8"), f"risk_scores_{int(year)}.csv", "text/csv", width="stretch")
+    st.download_button("Download driver decomposition CSV", drivers.to_csv(index=False).encode("utf-8"), f"drivers_{int(year)}.csv", "text/csv", width="stretch")
+    st.download_button("Download data-quality report CSV", quality.to_csv(index=False).encode("utf-8"), f"data_quality_{int(year)}.csv", "text/csv", width="stretch")
 
 with export_right:
     with st.expander("Inspect selected country-year row"):
@@ -2772,6 +2883,18 @@ surface substantially more usable for an analyst, hiring manager, or technical
 reviewer.
         """
     )
+
+with st.expander("Indicator dictionary & source traceability"):
+    traceability = pd.DataFrame([
+        {
+            "Label": item.get("label"), "Code": item.get("code"), "Source": item.get("source"),
+            "Series": item.get("source_series", item.get("world_bank", "")), "Unit": item.get("unit"),
+            "Frequency": item.get("frequency", "annual"), "Transformation": item.get("transformation", ""),
+            "Weight": item.get("weight"), "Direction": "Higher = more risk" if safe_float(item.get("risk_direction"), 1) > 0 else "Higher = less risk",
+            "Source URL": item.get("source_url", ""),
+        } for item in indicator_catalog.values()
+    ])
+    st.dataframe(traceability, width="stretch", hide_index=True, column_config={"Source URL": st.column_config.LinkColumn("Source URL")})
 
 
 # ============================================================================

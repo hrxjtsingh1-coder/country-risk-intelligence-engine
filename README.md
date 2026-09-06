@@ -1,226 +1,124 @@
 # Country Risk Intelligence Engine
 
-An auditable macroeconomic risk research platform that converts public country
-indicators into comparable risk scores, driver decompositions, peer benchmarks,
-scenario sensitivities, and analyst-style commentary.
+A transparent, reproducible country-risk research prototype that turns public macroeconomic data into **relative-risk positioning**, driver decomposition, peer context, and exploratory stress tests.
 
-The project is designed as a portfolio-quality example of turning messy public
-data into a transparent decision-support product. It is **not** a credit rating,
-causal forecasting model, or investment recommendation.
+> **Responsible use:** This is a university portfolio and decision-support prototype. It is not a credit rating, investment recommendation, sovereign-default probability, forecasting system, or professional financial advice.
 
-## Product overview
+## Why this exists
 
-The engine follows a reproducible country-by-year workflow:
+Country-risk work requires more than a dashboard: analysts need traceable sources, clear transformations, reproducible data vintages, explicit limitations, and an explanation for each score. This project demonstrates that workflow without overstating what public annual data or a simple model can establish.
+
+## What it does
 
 ```mermaid
 flowchart LR
-    A[Country and indicator configuration] --> B[World Bank / FRED collection]
-    B --> C[Cleaning and validation]
-    C --> D[Country × year panel]
-    D --> E[Cross-sectional risk scoring]
-    E --> F[Drivers and peer comparison]
-    E --> G[Scenario sensitivity]
-    E --> H[Deterministic commentary]
-    F --> I[Streamlit intelligence cockpit]
-    G --> I
-    H --> I
-    D --> J[CSV + SQLite warehouse]
+  A[Public sources] --> B[Validation & cleaning]
+  B --> C[Country-year panel]
+  C --> D[Cross-sectional scoring]
+  D --> E[Drivers & peers]
+  D --> F[Historical-sensitivity scenario]
+  E --> G[Streamlit research interface]
+  F --> G
 ```
 
-## What it delivers
+- Builds a country-year panel from World Bank Indicators API data, with a US-only FRED enrichment.
+- Flags missing, duplicate, and out-of-range observations before pivoting to the scoring panel.
+- Produces a deterministic 0–100 **relative** score, contributions, bands, peer comparisons, and rule-based commentary.
+- Records a JSON data vintage for live pipeline runs and exposes source series, units, transformations, weights, coverage, and source links in the UI.
+- Keeps synthetic demo data explicitly separate from live public data.
 
-### Analytical engine
+## Data modes and data sources
 
-- Annual macroeconomic panel across a configurable country universe.
-- World Bank indicator collection with a fault-tolerant source boundary.
-- FRED Federal Funds Effective Rate integration for the policy-rate proxy.
-- Cleaning, numeric coercion, duplicate-key handling, range flags, and coverage reporting.
-- Direction-adjusted, weighted, cross-sectional z-score risk model.
-- Available-weight renormalization when an indicator is missing.
-- Driver-level contribution analysis for every country-year.
-- Pooled-panel what-if scenario sensitivity with estimated indicator deltas.
-- Rule-based analyst commentary whose claims trace back to computed values.
+| Mode | UI label | Meaning |
+|---|---|---|
+| Demo | `DEMO DATA — SYNTHETIC DATASET` | Bundled deterministic fixture for UI/testing. **Not suitable for economic or investment decisions.** |
+| Live | `LIVE PUBLIC DATA` | Output from a completed local pipeline run with `data_metadata.json`. |
+| Unavailable | `LIVE DATA UNAVAILABLE` | No verified live vintage is present. The application offers an explicit **Open Demo Dataset** action; it does not silently substitute synthetic data. |
 
-### Intelligence cockpit
+Implemented sources:
 
-- Animated dark terminal / fintech presentation.
-- 0–100 risk score gauge and severity band.
-- Historical risk trajectory and year-over-year movement.
-- Driver decomposition with positive and mitigating signals.
-- Peer-group comparison and median positioning.
-- Scenario laboratory for policy-rate shocks.
-- Indicator signal board, metadata, coverage, and CSV export.
-- Responsive layout with accessible empty states and refresh controls.
+- [World Bank Indicators API](https://api.worldbank.org/v2/) for the configured annual macro indicators.
+- [FRED DFF](https://fred.stlouisfed.org/series/DFF) as a **US-only enrichment**. `POLICY_RATE_YOY_CHANGE_BPS` is the change in the annual-average Effective Federal Funds Rate, in basis points. It is excluded from the composite score and must not be interpreted as a globally comparable policy-rate series.
 
-The dashboard is a presentation layer, not a second model. The analytical source
-of truth remains `score_panel`, `top_drivers`, `run_shock_scenario`, and
-`generate_report`.
+BIS and ECB collectors are **not implemented** and are not advertised as supported sources.
 
-## Quick start
+## Methodology and model card
 
-### 1. Clone the repository and enter it
+### Risk score
 
-The commands below must be run **from the repository root**. Running them from
-Termux's home directory (`~`) causes `requirements.txt` and the `src` package to
-appear “missing”.
+For each indicator/year, the scoring engine calculates a country cross-sectional z-score:
 
-```bash
-git clone https://github.com/hrxjtsingh1-coder/country-risk-intelligence-engine.git
-cd country-risk-intelligence-engine
+`z(i,t) = (value(i,t) − mean(value(*,t))) / std(value(*,t))`
+
+Configured directionality makes positive contributions consistently correspond to more relative risk. Positive-weight indicators must sum to 1.0; missing indicators are excluded and observed weights are renormalized. The weighted signal is mapped around 50 and clipped to 0–100. Therefore:
+
+- The score measures **relative positioning in the available country-year panel**, not absolute country risk.
+- A score of 70 does **not** mean 70% probability of loss or default.
+- Scores can move as other countries or coverage change, even where a country’s own raw value changes little.
+
+`config/indicators.yaml` is the model input dictionary: code, label, category, source/series/link, frequency, unit, transformation, bounds, direction, and weight. The dashboard’s Model Card and Indicator Dictionary expose this metadata.
+
+### Scenario analysis
+
+`run_shock_scenario()` is a stress-test approximation using pooled-panel bivariate OLS: `target = alpha + beta × shock driver`. It reports baseline/shocked values, target deltas, R², sample size, estimation window, specification, an information-quality label, and an out-of-sample-shock flag. It is a **historical association**, not causal identification, a forecast, or an expected outcome. It has no controls, lags, or country-specific transmission mechanism.
+
+### Data quality and reproducibility
+
+Each live run writes `data/processed/data_metadata.json`, including run ID, retrieval timestamps, requested period, latest observation, country and indicator counts, source URLs, observation totals, and methodology/config version. The dashboard reports panel coverage, missing observations, duplicate country-years, configured range errors, and data state.
+
+## Project structure
+
+```text
+config/                 country universe and indicator model dictionary
+data/demo/              tracked synthetic fixture only
+src/cleaning/           cleaning, validation, coverage and wide-panel shaping
+src/indicators/         World Bank and US-only FRED collection
+src/scoring/            deterministic relative score and driver contributions
+src/scenario/           pooled-panel historical-sensitivity stress test
+src/commentary/         deterministic, rule-based analytical commentary
+src/pipeline/           reproducible end-to-end live run
+dashboard/app.py        Streamlit research interface
+tests/                  deterministic analytical tests
 ```
 
-### 2. Install dependencies
-
-Linux, macOS, and Termux:
+## Installation and running
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-On Termux, install the base tools once if needed:
-
-```bash
-pkg update
-pkg install python git
-```
-
-### 3. Launch with a deterministic demo dataset
-
-This is the fastest way to preview the product without waiting for external
-data providers:
-
-```bash
-python scripts/create_demo_data.py
-streamlit run dashboard/app.py
-```
-
-The demo data is synthetic and clearly intended for interface demonstration.
-It is never mixed with the live data collector.
-
-The Streamlit Cloud entrypoint is also available at the repository root:
-
-```text
-Main file path: streamlit_app.py
-```
-
-When deployed, the dashboard automatically uses the bundled synthetic demo
-panel until a live `data/processed/panel_wide.csv` is generated. The interface
-labels this mode clearly so demo output is not mistaken for real economic data.
-
-### 4. Run the live public-data pipeline
-
-Run a small universe first:
-
-```bash
-python -m src.pipeline.run_all \
-  --countries USA,IND,DEU \
-  --start 2015 \
-  --end 2025
-```
-
-Then launch the dashboard:
+### Demo mode
 
 ```bash
 streamlit run dashboard/app.py
 ```
 
-For the full configured universe, omit `--countries`. The pipeline writes:
+With no verified live vintage, the first screen displays **LIVE DATA UNAVAILABLE**. Select **Open Demo Dataset** to intentionally load the synthetic fixture.
 
-```text
-data/processed/panel_wide.csv
-data/processed/country_risk.db
-data/processed/commentary/<ISO3>_<YEAR>.md
-```
-
-Generated outputs are intentionally ignored by Git. Re-running the pipeline
-clears and reloads derived database rows so repeated runs remain reproducible.
-
-## Model methodology
-
-For each indicator and year, the engine computes a cross-sectional z-score:
-
-```text
-z(i,t) = (value(i,t) - mean(value(*,t))) / std(value(*,t))
-```
-
-The score then:
-
-1. Applies the configured risk direction, so higher values consistently mean
-   more or less risk depending on the indicator.
-2. Multiplies each signal by its configured weight.
-3. Renormalizes over indicators actually observed for the country-year.
-4. Maps the normalized signal onto a bounded 0–100 scale centered at 50.
-5. Assigns a transparent band: Low, Moderate, Elevated, High, or Severe.
-
-Weights, directionality, source metadata, and validation bounds live in
-`config/indicators.yaml`; the country universe and peer groups live in
-`config/countries.yaml`.
-
-Scenario analysis estimates pooled-panel relationships between a selected shock
-driver and configured target indicators using simple OLS sensitivity. It is a
-stress-test instrument, not a causal estimate.
-
-## Data sources
-
-- [World Bank Indicators API](https://data.worldbank.org/)
-- [FRED](https://fred.stlouisfed.org/) Federal Funds Effective Rate (`DFF`)
-
-Collectors are designed to fail gracefully at the individual-series level:
-unavailable observations remain missing and are reflected in coverage rather
-than being fabricated.
-
-## Repository structure
-
-```text
-country-risk-intelligence-engine/
-├── .streamlit/config.toml            # Dark dashboard theme
-├── config/
-│   ├── countries.yaml                # Country universe and peer groups
-│   └── indicators.yaml               # Weights, directions, bounds, sources
-├── dashboard/app.py                  # Streamlit intelligence cockpit
-├── scripts/
-│   └── create_demo_data.py           # Offline deterministic showcase data
-├── streamlit_app.py                  # Streamlit Cloud entrypoint
-├── data/demo/panel_wide.csv          # Tracked synthetic showcase panel
-├── src/
-│   ├── cleaning/clean.py             # Validation, cleaning, panel shaping
-│   ├── commentary/generate_commentary.py
-│   ├── db/                           # SQLite schema and loading utilities
-│   ├── indicators/build_panel.py     # World Bank and FRED collectors
-│   ├── pipeline/run_all.py           # End-to-end live pipeline
-│   ├── scenario/scenario_engine.py   # What-if sensitivity analysis
-│   └── scoring/risk_score.py         # Scores and driver decomposition
-├── requirements.txt
-└── README.md
-```
-
-## Quality checks
-
-The source is designed to be easy to validate locally. Compile the application
-and generate the offline demo panel with:
+### Live mode
 
 ```bash
+python -m src.pipeline.run_all --countries USA,IND,DEU --start 2015 --end 2025
+streamlit run dashboard/app.py
+```
+
+The collector retries transient HTTP failures with exponential backoff and logs per-series failures. A source failure produces missing coverage rather than invented observations. Streamlit Cloud should use `streamlit_app.py` as its main file; it re-executes the dashboard safely on reruns.
+
+## Testing and deployment
+
+```bash
+pytest
 python -m compileall -q src dashboard scripts
-python scripts/create_demo_data.py --countries USA,IND,DEU
 ```
 
-## Limitations and responsible use
+GitHub Actions runs `pytest` on pushes and pull requests. For deployment, configure Streamlit Community Cloud with this repository, Python dependencies from `requirements.txt`, and main file `streamlit_app.py`. To display live data, run the pipeline in a trusted scheduled environment and persist both `panel_wide.csv` and its matching `data_metadata.json`; do not commit credentials or represent an old output as freshly retrieved.
 
-- The model is intentionally deterministic and interpretable; it does not claim
-  causal identification.
-- Country scores are relative to the countries and years available in the panel.
-- Missing data can reduce completeness and change the effective score weights.
-- Annual indicators are not suitable for short-term market timing.
-- Scenario outputs express model sensitivity, not predicted outcomes.
-- Validate source revisions, definitions, and publication lags before using the
-  output in a real research or risk process.
+## Limitations and roadmap
 
-## Roadmap
+The model depends on public-source definitions, revisions, publication lags, and the selected country universe. Missing data alters effective weights and may conceal an unmeasured vulnerability. Future work includes source snapshots, documented multi-country policy-rate series, independent validation datasets, and scheduled provenance-aware refreshes.
 
-- Add persistent data vintage metadata and source snapshots.
-- Add configurable regional and income-group benchmarks.
-- Add automated data-quality reports for each pipeline run.
-- Add a production database adapter and scheduled refresh job.
+## Recruiter view
+
+This project demonstrates data engineering (API collection, validation, SQLite-ready outputs, reproducible metadata), quantitative risk analysis (cross-sectional normalization, weighted contributions, sensitivity diagnostics), governance (source traceability, model limitations, responsible-language controls), and product design (institutional dark UI, mobile-aware layouts, explicit data states, quality centre, and exports). The intended evidence is not a claim of predictive authority; it is evidence of disciplined analytical engineering.
