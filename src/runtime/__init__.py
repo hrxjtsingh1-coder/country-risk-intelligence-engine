@@ -1,1 +1,1 @@
-"""Runtime module for live data fetching and state management."""
+"""Runtime public-data services for the Country Risk Intelligence Engine."""
