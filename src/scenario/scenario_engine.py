@@ -16,12 +16,12 @@ import pandas as pd
 from src.scoring.risk_score import score_panel
 
 
-def _ols(x: pd.Series, y: pd.Series) -> tuple[float, float, int]:
+def _ols(x: pd.Series, y: pd.Series) -> tuple[float, float, int, float, float]:
     data = pd.DataFrame({"x": x, "y": y}).replace([np.inf, -np.inf], np.nan).dropna()
 
     n = len(data)
     if n < 5:
-        return float("nan"), float("nan"), n
+        return float("nan"), float("nan"), n, float("nan"), float("nan")
 
     xv = data["x"].to_numpy(dtype=float)
     yv = data["y"].to_numpy(dtype=float)
@@ -31,7 +31,7 @@ def _ols(x: pd.Series, y: pd.Series) -> tuple[float, float, int]:
 
     denom = np.sum((xv - x_mean) ** 2)
     if denom == 0:
-        return float("nan"), float("nan"), n
+        return float("nan"), float("nan"), n, float(xv.min()), float(xv.max())
 
     beta = np.sum((xv - x_mean) * (yv - y_mean)) / denom
     alpha = y_mean - beta * x_mean
@@ -42,7 +42,21 @@ def _ols(x: pd.Series, y: pd.Series) -> tuple[float, float, int]:
 
     r2 = 1.0 - ss_res / ss_tot if ss_tot else float("nan")
 
-    return float(beta), float(r2), n
+    return float(beta), float(r2), n, float(xv.min()), float(xv.max())
+
+
+def _information_assessment(models: list[dict]) -> str:
+    """Transparent information-quality label, not statistical confidence."""
+    usable = [m for m in models if not np.isnan(m["estimated_delta"])]
+    if not usable:
+        return "INSUFFICIENT DATA"
+    median_r2 = float(np.nanmedian([m["r_squared"] for m in usable]))
+    min_n = min(m["n_obs"] for m in usable)
+    if min_n >= 80 and median_r2 >= 0.35:
+        return "HIGH INFORMATION"
+    if min_n >= 30 and median_r2 >= 0.10:
+        return "MODERATE INFORMATION"
+    return "LOW INFORMATION"
 
 
 def run_shock_scenario(
@@ -77,7 +91,7 @@ def run_shock_scenario(
         if target not in baseline_panel.columns:
             continue
 
-        beta, r2, n_obs = _ols(
+        beta, r2, n_obs, observed_min, observed_max = _ols(
             baseline_panel[driver_code],
             baseline_panel[target],
         )
@@ -103,6 +117,9 @@ def run_shock_scenario(
                 "estimated_delta": estimated_delta,
                 "r_squared": r2,
                 "n_obs": n_obs,
+                "observed_driver_min": observed_min,
+                "observed_driver_max": observed_max,
+                "shocked_driver_value": float(pd.to_numeric(selected.iloc[0][driver_code], errors="coerce")) + float(shock_amount),
             }
         )
 
@@ -167,6 +184,10 @@ def run_shock_scenario(
 
     scenario_band = band(scenario_score)
 
+    baseline_driver = float(pd.to_numeric(selected.iloc[0][driver_code], errors="coerce"))
+    shocked_driver = baseline_driver + float(shock_amount)
+    observed_driver = pd.to_numeric(baseline_panel[driver_code], errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
+    out_of_sample = bool(not observed_driver.empty and (shocked_driver < observed_driver.min() or shocked_driver > observed_driver.max()))
     return {
         "driver_code": driver_code,
         "shock_amount": float(shock_amount),
@@ -176,4 +197,10 @@ def run_shock_scenario(
         "scenario_band": scenario_band,
         "delta": scenario_score - baseline_score,
         "indicator_deltas": target_deltas,
+        "baseline_driver_value": baseline_driver,
+        "shocked_driver_value": shocked_driver,
+        "estimation_window": f"{int(pd.to_numeric(panel['year'], errors='coerce').min())}–{int(pd.to_numeric(panel['year'], errors='coerce').max())}",
+        "model_specification": "Pooled-panel bivariate OLS: target = alpha + beta × shock driver; no causal controls or lags.",
+        "information_assessment": _information_assessment(target_deltas),
+        "out_of_sample_shock": out_of_sample,
     }

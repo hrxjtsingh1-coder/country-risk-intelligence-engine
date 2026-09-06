@@ -48,11 +48,15 @@ def _band(score: float) -> str:
 
 
 def _indicator_map() -> dict[str, dict]:
-    return {
+    records = {
         str(r["code"]): r
         for r in _records()
         if r.get("code")
     }
+    active_weights = [float(item.get("weight", 0)) for item in records.values() if float(item.get("weight", 0)) > 0]
+    if not active_weights or not np.isclose(sum(active_weights), 1.0):
+        raise ValueError("Configured positive indicator weights must sum to 1.0.")
+    return records
 
 
 def _zscore(series: pd.Series) -> pd.Series:
@@ -128,6 +132,10 @@ def score_panel(panel: pd.DataFrame):
                     "indicator_code": code,
                     "category": meta.get("category", "Macro"),
                     "label": meta.get("label", code),
+                    "raw_value": values,
+                    "unit": meta.get("unit", ""),
+                    "risk_direction": risk_direction,
+                    "weight": weight,
                     "z_risk": z_risk,
                     "weighted_contribution": contribution,
                     "_available": values.notna(),
@@ -193,6 +201,10 @@ def score_panel(panel: pd.DataFrame):
             "indicator_code",
             "category",
             "label",
+            "raw_value",
+            "unit",
+            "risk_direction",
+            "weight",
             "z_risk",
             "weighted_contribution",
         ]

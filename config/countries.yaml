@@ -88,7 +88,8 @@ countries:
     name: Poland
     region: Europe
     income: High income
-    monetary_union: EUR
+    # Poland is an EU member but does not use the euro (verified 2026-09).
+    monetary_union: null
   - iso3: NLD
     name: Netherlands
     region: Europe
