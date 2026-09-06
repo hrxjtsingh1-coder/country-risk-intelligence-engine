@@ -6,6 +6,8 @@ indicators:
     risk_direction: 1
     source: world_bank
     world_bank: FP.CPI.TOTL.ZG
+    unit: "% YoY"
+    note: "Annual consumer-price inflation, measuring the change in the CPI basket."
     min: -20
     max: 100
 
@@ -16,6 +18,8 @@ indicators:
     risk_direction: -1
     source: world_bank
     world_bank: NY.GDP.MKTP.KD.ZG
+    unit: "% YoY"
+    note: "Annual real GDP growth; stronger growth generally lowers macro risk."
     min: -40
     max: 30
 
@@ -26,6 +30,8 @@ indicators:
     risk_direction: 1
     source: world_bank
     world_bank: SL.UEM.TOTL.ZS
+    unit: "% of labor force"
+    note: "Share of the labor force without work but available for employment."
     min: 0
     max: 100
 
@@ -36,6 +42,8 @@ indicators:
     risk_direction: 1
     source: world_bank
     world_bank: GC.DOD.TOTL.GD.ZS
+    unit: "% of GDP"
+    note: "General-government gross debt relative to the size of the economy."
     min: 0
     max: 500
 
@@ -46,6 +54,8 @@ indicators:
     risk_direction: -1
     source: world_bank
     world_bank: BN.CAB.XOKA.GD.ZS
+    unit: "% of GDP"
+    note: "Current-account balance relative to GDP; deficits indicate external financing needs."
     min: -100
     max: 100
 
@@ -56,6 +66,8 @@ indicators:
     risk_direction: -1
     source: world_bank
     world_bank: FI.RES.TOTL.MO
+    unit: "months of imports"
+    note: "Foreign-exchange reserves measured by the months of imports they can cover."
     min: 0
     max: 500
 
@@ -66,6 +78,8 @@ indicators:
     risk_direction: 1
     source: world_bank
     world_bank: DT.DOD.DECT.GN.ZS
+    unit: "% of GNI"
+    note: "Total external debt stocks relative to gross national income."
     min: 0
     max: 1000
 
@@ -76,6 +90,8 @@ indicators:
     risk_direction: 1
     source: world_bank
     world_bank: FB.AST.NPER.ZS
+    unit: "% of gross loans"
+    note: "Bank non-performing loans as a share of total gross loans."
     min: 0
     max: 100
 
@@ -85,6 +101,8 @@ indicators:
     weight: 0.06
     risk_direction: 1
     source: derived
+    unit: "% YoY"
+    note: "Year-over-year currency depreciation; positive values indicate a weaker currency."
     min: -100
     max: 500
 
@@ -95,6 +113,8 @@ indicators:
     risk_direction: 1
     source: fred
     fred: DFF
+    unit: "basis points YoY"
+    note: "Year-over-year change in the policy rate; positive values indicate tightening."
     min: -1000
     max: 1000
 
@@ -106,5 +126,7 @@ indicators:
     weight: 0.00
     risk_direction: 1
     source: bis
+    unit: "percentage points"
+    note: "Credit-to-GDP gap relative to its long-term trend."
     min: -100
     max: 100
