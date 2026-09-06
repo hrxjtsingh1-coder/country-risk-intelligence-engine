@@ -1,339 +1,136 @@
-"""
-Tests for the live data runtime system.
-Tests the state machine, provenance, and live data collection with mocked responses.
-"""
-
-import pytest
 import pandas as pd
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
-import json
+import pytest
+import requests
 
-# Add project root to path
-import sys
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from src.runtime import live_data
 
 
-class TestDataStateMachine:
-    """Tests for DataStateMachine state management."""
-    
-    def test_initial_state_is_unavailable(self):
-        from src.runtime.data_state import DataStateMachine, DataState
-        
-        machine = DataStateMachine()
-        assert machine.current_state == DataState.UNAVAILABLE
-    
-    def test_transition_to_loading(self):
-        from src.runtime.data_state import DataStateMachine, DataState
-        
-        machine = DataStateMachine()
-        machine.transition_to(DataState.LOADING)
-        assert machine.current_state == DataState.LOADING
-    
-    def test_transition_to_live(self):
-        from src.runtime.data_state import DataStateMachine, DataState
-        
-        machine = DataStateMachine()
-        machine.set_live_data_available(is_fresh=True)
-        assert machine.current_state == DataState.LIVE
-    
-    def test_transition_to_stale(self):
-        from src.runtime.data_state import DataStateMachine, DataState
-        
-        machine = DataStateMachine()
-        machine.set_live_data_available(is_fresh=False)
-        assert machine.current_state == DataState.STALE
-    
-    def test_transition_to_demo(self):
-        from src.runtime.data_state import DataStateMachine, DataState
-        
-        machine = DataStateMachine()
-        machine.set_demo_mode()
-        assert machine.current_state == DataState.DEMO
-        assert machine.is_demo_mode()
-    
-    def test_transition_to_unavailable_with_error(self):
-        from src.runtime.data_state import DataStateMachine, DataState
-        
-        machine = DataStateMachine()
-        machine.set_unavailable({"operation": "test", "details": "test error"})
-        assert machine.current_state == DataState.UNAVAILABLE
-        assert machine.is_unavailable()
-    
-    def test_is_live_state(self):
-        from src.runtime.data_state import DataStateMachine, DataState
-        
-        machine = DataStateMachine()
-        assert not machine.is_live_state()
-        machine.set_live_data_available(is_fresh=True)
-        assert machine.is_live_state()
-    
-    def test_can_display_dashboard(self):
-        from src.runtime.data_state import DataStateMachine, DataState
-        
-        machine = DataStateMachine()
-        assert not machine.can_display_dashboard()
-        machine.set_demo_mode()
-        assert machine.can_display_dashboard()
-        machine.set_live_data_available(is_fresh=True)
-        assert machine.can_display_dashboard()
-    
-    def test_get_display_badge(self):
-        from src.runtime.data_state import DataStateMachine, DataState
-        
-        machine = DataStateMachine()
-        badge_text, badge_class = machine.get_display_badge()
-        assert "LIVE DATA UNAVAILABLE" in badge_text
-        assert "badge-unavailable" in badge_class
-        
-        machine.set_live_data_available(is_fresh=True)
-        badge_text, badge_class = machine.get_display_badge()
-        assert "LIVE PUBLIC DATA" in badge_text
-        assert "badge-live" in badge_class
-        
-        machine.set_demo_mode()
-        badge_text, badge_class = machine.get_display_badge()
-        assert "DEMO DATA" in badge_text
-        assert "badge-demo" in badge_class
+def test_country_registry_contains_configured_real_countries():
+    records = live_data.country_records()
+    codes = {str(x["iso3"]).upper() for x in records}
+    assert "IND" in codes
+    assert "USA" in codes
+    assert len(codes) >= 10
 
 
-class TestProvenanceManager:
-    """Tests for ProvenanceRecord and ProvenanceManager."""
-    
-    def test_provenance_record_creation(self):
-        from src.runtime.provenance import ProvenanceRecord
-        from datetime import datetime, timezone
-        
-        record = ProvenanceRecord(
-            run_id="test-001",
-            retrieved_at=datetime.now(timezone.utc),
-            source_name="World Bank",
-            source_endpoint="https://api.worldbank.org/v2",
-            source_series="NY.GDP.MKTP.KD.ZG",
-            requested_period="2020-2025",
-            latest_observation=2024,
-            country_count=20,
-            indicator_count=10,
-            expected_observations=200,
-            received_observations=180,
-            coverage=0.9
-        )
-        
-        assert record.run_id == "test-001"
-        assert record.source_name == "World Bank"
-        assert record.country_count == 20
-        assert record.coverage == 0.9
-    
-    def test_provenance_to_dict(self):
-        from src.runtime.provenance import ProvenanceRecord
-        from datetime import datetime, timezone
-        
-        record = ProvenanceRecord(
-            run_id="test-002",
-            retrieved_at=datetime.now(timezone.utc),
-            source_name="FRED",
-            source_endpoint="https://fred.stlouisfed.org",
-            source_series="DFF",
-            requested_period="2020-2025"
-        )
-        
-        record_dict = record.to_dict()
-        assert isinstance(record_dict, dict)
-        assert record_dict["run_id"] == "test-002"
-        assert record_dict["source_name"] == "FRED"
+def test_world_bank_parser_preserves_country_and_indicator():
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return [{"total": 1}, [{
+                "countryiso3code": "IND",
+                "country": {"value": "India"},
+                "region": {"id": "SAS"},
+                "date": "2024",
+                "value": 7.2,
+            }]]
+
+    class Session:
+        def get(self, *args, **kwargs):
+            return Response()
+
+    out = live_data._wb_indicator(Session(), "NY.GDP.MKTP.KD.ZG", 2024, 2024)
+    assert len(out) == 1
+    assert out.iloc[0]["country_iso3"] == "IND"
+    assert out.iloc[0]["country_name"] == "India"
+    assert out.iloc[0]["indicator_code"] == "NY.GDP.MKTP.KD.ZG"
+    assert float(out.iloc[0]["value"]) == 7.2
 
 
-class TestLiveDataCollection:
-    """Tests for live data collection with mocked responses."""
-    
-    def test_validate_panel_data_empty(self):
-        from src.runtime.live_data import validate_panel_data
-        
-        is_valid, issues = validate_panel_data(pd.DataFrame())
-        assert not is_valid
-        assert len(issues) > 0
-    
-    def test_validate_panel_data_with_valid_data(self):
-        from src.runtime.live_data import validate_panel_data
-        
-        df = pd.DataFrame([
-            {"country_iso3": "USA", "indicator_code": "NY.GDP.MKTP.KD.ZG", "year": 2024, "value": 2.5},
-            {"country_iso3": "IND", "indicator_code": "NY.GDP.MKTP.KD.ZG", "year": 2024, "value": 6.8},
-        ])
-        
-        is_valid, issues = validate_panel_data(df)
-        assert is_valid
-        assert len(issues) == 0
-    
-    def test_validate_panel_data_missing_columns(self):
-        from src.runtime.live_data import validate_panel_data
-        
-        # Missing required columns
-        df = pd.DataFrame([
-            {"country": "USA", "indicator": "GDP", "year": 2024, "value": 2.5},
-        ])
-        
-        is_valid, issues = validate_panel_data(df)
-        assert not is_valid
-    
-    def test_get_latest_common_year_no_data(self):
-        from src.runtime.live_data import get_latest_common_year
-        
-        result = get_latest_common_year(pd.DataFrame())
-        assert result is None
-    
-    def test_get_latest_common_year_with_data(self):
-        from src.runtime.live_data import get_latest_common_year
-        
-        # Create data with complete coverage for 2022 and partial for 2023
-        df = pd.DataFrame([
-            # Complete data for 2022 (2 countries x 2 indicators = 4 obs)
-            {"country_iso3": "USA", "indicator_code": "NY.GDP.MKTP.KD.ZG", "year": 2022, "value": 2.1},
-            {"country_iso3": "USA", "indicator_code": "GC.DOD.TOTL.GD.ZS", "year": 2022, "value": 120.0},
-            {"country_iso3": "IND", "indicator_code": "NY.GDP.MKTP.KD.ZG", "year": 2022, "value": 6.8},
-            {"country_iso3": "IND", "indicator_code": "GC.DOD.TOTL.GD.ZS", "year": 2022, "value": 83.0},
-            # Incomplete data for 2023 (only 1 country x 2 indicators = 2 obs)
-            {"country_iso3": "IND", "indicator_code": "NY.GDP.MKTP.KD.ZG", "year": 2023, "value": 6.8},
-            {"country_iso3": "IND", "indicator_code": "GC.DOD.TOTL.GD.ZS", "year": 2023, "value": 83.0},
-        ])
-        
-        result = get_latest_common_year(df, min_coverage=0.5)
-        # With 2 countries configured, 2023 only has 1 country so it may not pass coverage
-        # The function should return a valid year
-        assert result in [2022, 2023] or result is None
-    
-    def test_create_wide_panel_from_long(self):
-        from src.runtime.live_data import create_wide_panel_from_long
-        
-        df = pd.DataFrame([
-            {"country_iso3": "USA", "indicator_code": "NY.GDP.MKTP.KD.ZG", "year": 2022, "value": 2.1, "source": "World Bank", "flag": "ok"},
-            {"country_iso3": "USA", "indicator_code": "GC.DOD.TOTL.GD.ZS", "year": 2022, "value": 120.0, "source": "World Bank", "flag": "ok"},
-            {"country_iso3": "IND", "indicator_code": "NY.GDP.MKTP.KD.ZG", "year": 2022, "value": 6.8, "source": "World Bank", "flag": "ok"},
-            {"country_iso3": "IND", "indicator_code": "GC.DOD.TOTL.GD.ZS", "year": 2022, "value": 83.0, "source": "World Bank", "flag": "ok"},
-        ])
-        
-        wide_df = create_wide_panel_from_long(df)
-        
-        assert not wide_df.empty
-        assert "country_iso3" in wide_df.columns
-        assert "year" in wide_df.columns
-        assert "NY.GDP.MKTP.KD.ZG" in wide_df.columns
-        assert "GC.DOD.TOTL.GD.ZS" in wide_df.columns
+def test_world_bank_parser_excludes_aggregates():
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return [{"total": 2}, [
+                {"countryiso3code": "IND", "country": {"value": "India"}, "region": {"id": "SAS"}, "date": "2024", "value": 7.2},
+                {"countryiso3code": "WLD", "country": {"value": "World"}, "region": {"id": "NA"}, "date": "2024", "value": 3.1},
+            ]]
+
+    class Session:
+        def get(self, *args, **kwargs):
+            return Response()
+
+    out = live_data._wb_indicator(Session(), "NY.GDP.MKTP.KD.ZG", 2024, 2024)
+    assert list(out.country_iso3) == ["IND"]
 
 
-class TestLiveDataFetchMocked:
-    """Tests for fetch_live_data with mocked HTTP responses."""
-    
-    @patch('requests.Session')
-    def test_fetch_live_data_handles_api_failure(self, mock_session_class):
-        from src.runtime.live_data import fetch_live_data
-        import requests
-        
-        # Mock session that raises an exception
-        mock_session = MagicMock()
-        mock_session.get.side_effect = requests.RequestException("Network error")
-        mock_session_class.return_value = mock_session
-        
-        # Should handle gracefully and return empty data with error info
-        long_panel, metadata = fetch_live_data(
-            countries=["USA"],
-            start_year=2022,
-            end_year=2023
-        )
-        
-        # The function should complete without raising
-        assert metadata is not None
-        assert "fetch_statistics" in metadata
+def test_fx_change_is_calculated_within_country():
+    raw = pd.DataFrame([
+        {"country_iso3":"USA","country_name":"US","year":2022,"value":1.0},
+        {"country_iso3":"USA","country_name":"US","year":2023,"value":1.1},
+        {"country_iso3":"IND","country_name":"India","year":2022,"value":80.0},
+        {"country_iso3":"IND","country_name":"India","year":2023,"value":88.0},
+    ])
+    out = live_data._fx_from_raw(raw, 2023, 2023)
+    vals = dict(zip(out.country_iso3, out.value))
+    assert round(float(vals["USA"]), 6) == 10.0
+    assert round(float(vals["IND"]), 6) == 10.0
 
 
-class TestDataFreshnessInfo:
-    """Tests for data freshness information extraction."""
-    
-    def test_get_freshness_info_empty(self):
-        from src.runtime.data_state import get_data_freshness_info
-        
-        result = get_data_freshness_info(None)
-        assert result["retrieved_at"] is None
-        assert result["is_fresh"] is False
-    
-    def test_get_freshness_info_with_recent_data(self):
-        from src.runtime.data_state import get_data_freshness_info
-        from datetime import datetime, timezone
-        
-        recent_metadata = {
-            "retrieved_at": datetime.now(timezone.utc).isoformat(),
-            "latest_available_observation": 2024,
-            "sources": ["World Bank"]
-        }
-        
-        result = get_data_freshness_info(recent_metadata)
-        assert result["is_fresh"] is True
-        assert result["latest_observation_year"] == 2024
-        assert result["sources"] == ["World Bank"]
+def test_clean_long_flags_bounds_and_missing():
+    df = pd.DataFrame([
+        {"country_iso3":"USA","country_name":"US","indicator_code":"FP.CPI.TOTL.ZG","year":2024,"value":200,"source":"WB"},
+        {"country_iso3":"IND","country_name":"India","indicator_code":"FP.CPI.TOTL.ZG","year":2024,"value":None,"source":"WB"},
+    ])
+    out = live_data._clean_long(df)
+    flags = dict(zip(out.country_iso3, out.flag))
+    assert flags["USA"] == "out_of_range"
+    assert flags["IND"] == "missing"
 
 
-class TestStateTransitions:
-    """Tests for state transition validation."""
-    
-    def test_validate_state_transition_loading_from_unavailable(self):
-        from src.runtime.data_state import validate_state_transition, DataState
-        
-        is_valid, reason = validate_state_transition(
-            DataState.UNAVAILABLE,
-            DataState.LOADING
-        )
-        assert is_valid
-    
-    def test_validate_state_transition_demo_from_unavailable(self):
-        from src.runtime.data_state import validate_state_transition, DataState
-        
-        is_valid, reason = validate_state_transition(
-            DataState.UNAVAILABLE,
-            DataState.DEMO
-        )
-        assert is_valid
-    
-    def test_validate_state_transition_live_from_demo_requires_data(self):
-        from src.runtime.data_state import validate_state_transition, DataState
-        
-        # Without data
-        is_valid, reason = validate_state_transition(
-            DataState.DEMO,
-            DataState.LIVE,
-            has_data=False
-        )
-        assert not is_valid
-        
-        # With data
-        is_valid, reason = validate_state_transition(
-            DataState.DEMO,
-            DataState.LIVE,
-            has_data=True
-        )
-        assert is_valid
+def test_clean_long_deduplicates_latest_row():
+    df = pd.DataFrame([
+        {"country_iso3":"USA","country_name":"US","indicator_code":"FP.CPI.TOTL.ZG","year":2024,"value":2,"source":"WB"},
+        {"country_iso3":"USA","country_name":"US","indicator_code":"FP.CPI.TOTL.ZG","year":2024,"value":3,"source":"WB"},
+    ])
+    out = live_data._clean_long(df)
+    assert len(out) == 1
+    assert float(out.iloc[0]["value"]) == 3.0
 
 
-class TestGraphZoomDisabled:
-    """Tests to verify graph zoom is disabled."""
-    
-    def test_create_plotly_figure_removes_zoom(self):
-        from src.ui.charts import create_risk_score_chart
-        import plotly.graph_objects as go
-        
-        # Create minimal test data
-        df = pd.DataFrame({
-            "country_iso3": ["USA", "USA", "USA"],
-            "year": [2022, 2023, 2024],
-            "risk_score": [45.0, 48.0, 50.0]
-        })
-        
-        fig = create_risk_score_chart(df, "USA", 2024)
-        
-        # Check that zoom-related modebar buttons are removed
-        modebar_remove = fig.layout.get("modebar_remove", [])
-        assert "zoom" in modebar_remove
-        assert "pan" in modebar_remove
+def test_wide_panel_excludes_invalid_observations():
+    df = pd.DataFrame([
+        {"country_iso3":"USA","country_name":"US","indicator_code":"FP.CPI.TOTL.ZG","year":2024,"value":2,"source":"WB","flag":"ok"},
+        {"country_iso3":"USA","country_name":"US","indicator_code":"NY.GDP.MKTP.KD.ZG","year":2024,"value":300,"source":"WB","flag":"out_of_range"},
+    ])
+    wide = live_data.create_wide_panel_from_long(live_data._clean_long(df))
+    assert float(wide.loc[0, "FP.CPI.TOTL.ZG"]) == 2.0
+    assert "NY.GDP.MKTP.KD.ZG" not in wide.columns
 
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+def test_latest_valid_analysis_year_prefers_latest_well_covered_year():
+    codes = [x["code"] for x in live_data.indicator_records() if float(x.get("weight", 0) or 0) > 0]
+    rows = [
+        {"country_iso3": f"X{i:02d}", "indicator_code": code, "year": year, "value": i + 1, "flag": "ok"}
+        for year in (2024, 2025)
+        for i in range(35)
+        for code in codes
+    ]
+    df = pd.DataFrame(rows)
+    assert live_data.latest_valid_analysis_year(df, codes, min_coverage=.55, min_countries=30) == 2025
+
+
+def test_data_quality_reports_missing_and_valid_coverage():
+    df = pd.DataFrame([
+        {"country_iso3":"USA","indicator_code":"FP.CPI.TOTL.ZG","year":2024,"value":2,"flag":"ok"},
+        {"country_iso3":"IND","indicator_code":"FP.CPI.TOTL.ZG","year":2024,"value":None,"flag":"missing"},
+    ])
+    q = live_data.data_quality(df, 2024)
+    assert q["countries"] == 2
+    assert q["indicators"] == 1
+    assert q["missing"] == 1
+    assert q["coverage"] == .5
+
+
+def test_fetch_live_data_raises_when_all_sources_fail(monkeypatch):
+    class BrokenSession:
+        def get(self, *args, **kwargs):
+            raise requests.RequestException("network down")
+
+    monkeypatch.setattr(live_data, "_session", lambda: BrokenSession())
+    with pytest.raises(RuntimeError, match="no usable observations"):
+        live_data.fetch_live_data(start_year=2024, end_year=2024)
