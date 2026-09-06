@@ -29,11 +29,20 @@ flowchart LR
 
 ## Data modes and data sources
 
+The deployed Streamlit application automatically attempts to fetch live data at runtime. The local pipeline (`python -m src.pipeline.run_all`) is also available for offline batch processing.
+
 | Mode | UI label | Meaning |
 |---|---|---|
 | Demo | `DEMO DATA — SYNTHETIC DATASET` | Bundled deterministic fixture for UI/testing. **Not suitable for economic or investment decisions.** |
-| Live | `LIVE PUBLIC DATA` | Output from a completed local pipeline run with `data_metadata.json`. |
-| Unavailable | `LIVE DATA UNAVAILABLE` | No verified live vintage is present. The application offers an explicit **Open Demo Dataset** action; it does not silently substitute synthetic data. |
+| Live | `LIVE PUBLIC DATA` | Data fetched automatically from World Bank/FRED at runtime. Includes 6-hour caching and provenance tracking. |
+| Unavailable | `LIVE DATA UNAVAILABLE` | Official public data could not be retrieved. Application offers **Retry** and **Open Demo Dataset** actions. |
+
+**Live Mode Behavior:**
+- On first load, the application automatically attempts to fetch data from official sources
+- Results are cached for 6 hours to avoid redundant API calls
+- Explicit "Refresh Live Data" button invalidates cache and fetches fresh data
+- Latest valid analysis year is determined automatically based on data coverage
+- Source provenance and data quality metrics are displayed
 
 Implemented sources:
 
