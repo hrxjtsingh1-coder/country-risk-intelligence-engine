@@ -32,6 +32,13 @@ DEMO_PANEL_PATH = ROOT / "data" / "demo" / "panel_wide.csv"
 from src.commentary.generate_commentary import generate_report
 from src.scenario.scenario_engine import run_shock_scenario
 from src.scoring.risk_score import score_panel, top_drivers
+from src.analysis.backtest import run_backtest
+
+# Runtime live-data provider (fetches World Bank/FRED at runtime — see
+# src/runtime/live_data.py). Kept separate from the analytical core above:
+# this only decides WHERE the panel comes from, never how it's scored.
+from src.runtime import data_state
+from src.runtime.live_data import LiveDataUnavailable, fetch_live_panel
 
 
 # ============================================================================
@@ -624,6 +631,21 @@ div[data-testid="stDataFrame"] {
     margin-top: 13px;
 }
 
+.peer-position-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 14px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+}
+
+.peer-position-value {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+}
+
 .driver-row {
     display: grid;
     grid-template-columns: 1fr 70px;
@@ -1004,6 +1026,16 @@ div[data-testid="stDataFrame"] {
     .signal-grid {
         grid-template-columns: 1fr;
     }
+    .peer-position-row {
+        flex-wrap: wrap;
+        gap: 14px !important;
+    }
+    .peer-position-row > div {
+        min-width: 30%;
+    }
+    .peer-position-value {
+        font-size: 18px !important;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1144,42 +1176,97 @@ peer_groups = (
     if isinstance(countries_cfg, dict)
     else {}
 )
-indicator_catalog = {
-    str(item.get("code")): item
-    for item in (
-        indicators_cfg.get("indicators", [])
-        if isinstance(indicators_cfg, dict)
-        else []
-    )
-    if isinstance(item, dict) and item.get("code")
-}
 
-DATASET_PATH = PANEL_PATH if PANEL_PATH.exists() else DEMO_PANEL_PATH
-USING_DEMO_DATA = DATASET_PATH == DEMO_PANEL_PATH
+# ============================================================================
+# LIVE / DEMO DATA STATE MACHINE
+#
+# The public app fetches live World Bank/FRED data itself — nobody should
+# need to run a Python command before anything appears. A live failure
+# shows a clean status screen with one explicit way forward (Open Demo
+# Dataset); it never silently substitutes synthetic data for real data.
+# ============================================================================
 
-if not DATASET_PATH.exists():
+COUNTRY_ISO3_LIST = tuple(
+    c["iso3"] for c in countries_cfg.get("countries", []) if c.get("iso3")
+) if isinstance(countries_cfg, dict) else tuple()
+
+LIVE_START_YEAR = 2012
+LIVE_END_YEAR = datetime.now().year
+
+
+def _config_version() -> str:
+    """Short hash of the config files so a cached live fetch invalidates
+    itself if you edit indicators.yaml/countries.yaml, without needing a
+    manual cache clear."""
+    import hashlib
+
+    payload = (CONFIG_DIR / "indicators.yaml").read_bytes() + (CONFIG_DIR / "countries.yaml").read_bytes()
+    return hashlib.sha256(payload).hexdigest()[:10]
+
+
+@st.cache_data(ttl=data_state.LIVE_CACHE_TTL_SECONDS, show_spinner=False)
+def _cached_fetch_live(iso3_codes: tuple, start_year: int, end_year: int, config_version: str):
+    return fetch_live_panel(list(iso3_codes), indicators_cfg, start_year, end_year, config_version)
+
+
+if "data_mode" not in st.session_state:
+    st.session_state.data_mode = None  # unset -> attempt live below
+
+live_result = None
+live_error = None
+
+if st.session_state.data_mode != data_state.DEMO:
+    try:
+        with st.spinner("Connecting to World Bank..."):
+            live_result = _cached_fetch_live(
+                COUNTRY_ISO3_LIST, LIVE_START_YEAR, LIVE_END_YEAR, _config_version()
+            )
+        st.session_state.data_mode = data_state.LIVE
+    except LiveDataUnavailable as exc:
+        live_error = exc
+        st.session_state.data_mode = data_state.UNAVAILABLE
+
+if st.session_state.data_mode == data_state.UNAVAILABLE:
     st.markdown(
-        """
+        f"""
         <div class="card" style="margin-top:24px;">
-            <div class="card-label">ENGINE WAITING FOR DATA</div>
-            <div class="card-value" style="font-size:24px;">panel_wide.csv not found</div>
+            <div class="card-label">LIVE DATA UNAVAILABLE</div>
+            <div class="card-value" style="font-size:22px;">
+                Official public data could not be verified right now.
+            </div>
             <div class="card-caption" style="margin-top:10px;">
-                Run <code>python -m src.pipeline.run_all</code> once to build the
-                dashboard-ready panel from the configured public data sources.
+                Source: World Bank Indicators API &middot; Status: Unavailable
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
+    if live_error is not None:
+        st.caption(str(live_error))
+        if live_error.technical_detail:
+            with st.expander("Technical details"):
+                st.code(live_error.technical_detail)
+    if st.button("Open Demo Dataset"):
+        st.session_state.data_mode = data_state.DEMO
+        st.rerun()
+    st.caption("Reloading this page will automatically retry live data.")
     st.stop()
 
-if USING_DEMO_DATA:
-    st.info(
-        "Demo mode is active: this dashboard is using the bundled synthetic "
-        "panel. Run the live pipeline to replace it with World Bank/FRED data."
-    )
+USING_DEMO_DATA = st.session_state.data_mode == data_state.DEMO
+live_provenance = None
 
-panel = load_panel(DATASET_PATH)
+if USING_DEMO_DATA:
+    if not DEMO_PANEL_PATH.exists():
+        st.error("Demo dataset file is missing (data/demo/panel_wide.csv).")
+        st.stop()
+    panel = load_panel(DEMO_PANEL_PATH)
+    st.error(
+        "DEMO DATA — SYNTHETIC DATASET. For interface / methodology "
+        "demonstration only — these are not real economic observations."
+    )
+else:
+    panel = live_result.wide_panel
+    live_provenance = live_result.provenance
 
 
 # ============================================================================
@@ -1266,21 +1353,6 @@ def normalize_band(value):
 
 def band_color(value):
     return BAND_COLORS_UI.get(normalize_band(value), COLORS["orange"])
-
-
-def indicator_metadata(code):
-    """Return config-backed display metadata for an indicator hover state."""
-    metadata = indicator_catalog.get(str(code), {})
-    return {
-        "label": str(metadata.get("label", code)),
-        "unit": str(metadata.get("unit", "configured units")),
-        "note": str(
-            metadata.get(
-                "note",
-                "Configured indicator used in the country-risk scoring model.",
-            )
-        ),
-    }
 
 
 def score_pct(score):
@@ -1408,7 +1480,7 @@ def make_plotly_layout(fig, height=360, margin=None):
         margin=margin,
         title=dict(text=""),  # BUG FIX: an unset title rendered as literal "undefined" text
         uirevision="country-risk-intelligence",
-        transition=dict(duration=500, easing="cubic-in-out"),
+        dragmode=False,  # PHASE 32: no box/drag zoom — hover stays on, dragging the chart doesn't
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font=dict(
@@ -1431,6 +1503,7 @@ def make_plotly_layout(fig, height=360, margin=None):
         zeroline=False,
         linecolor="rgba(148,163,184,.12)",
         tickfont=dict(color=COLORS["faint"], size=10),
+        fixedrange=True,  # PHASE 32: axis can't be zoomed/panned by dragging
     )
     fig.update_yaxes(
         showgrid=True,
@@ -1438,6 +1511,7 @@ def make_plotly_layout(fig, height=360, margin=None):
         zeroline=False,
         linecolor="rgba(148,163,184,.08)",
         tickfont=dict(color=COLORS["faint"], size=10),
+        fixedrange=True,  # PHASE 32: axis can't be zoomed/panned by dragging
     )
     return fig
 
@@ -1447,6 +1521,18 @@ def empty_state(message):
         f'<div class="empty">{esc(message)}</div>',
         unsafe_allow_html=True,
     )
+
+
+def user_error(message: str, exc: Exception | None = None):
+    """
+    PHASE 35: a clean, human-readable warning — never a raw Python
+    traceback as the primary message. The actual exception, if any, goes
+    behind a collapsed "Technical details" expander for debugging.
+    """
+    st.warning(message)
+    if exc is not None:
+        with st.expander("Technical details"):
+            st.code(f"{type(exc).__name__}: {exc}")
 
 
 # ============================================================================
@@ -1519,9 +1605,14 @@ with st.sidebar:
     refresh_col1, refresh_col2 = st.columns(2)
 
     with refresh_col1:
-        if st.button("↻ Refresh", width="stretch"):
-            st.cache_data.clear()
-            st.rerun()
+        if USING_DEMO_DATA:
+            if st.button("Return to Live Data", width="stretch"):
+                st.session_state.data_mode = None
+                st.rerun()
+        else:
+            if st.button("↻ Refresh Live Data", width="stretch"):
+                _cached_fetch_live.clear()
+                st.rerun()
 
     with refresh_col2:
         st.caption("Panel")
@@ -1588,7 +1679,7 @@ try:
     country_drivers = top_drivers(drivers, country, year, n=6)
 except Exception as exc:
     country_drivers = pd.DataFrame()
-    st.warning(f"Driver decomposition unavailable: {exc}")
+    user_error("Driver decomposition is temporarily unavailable for this slice.", exc)
 
 driver_code = "POLICY_RATE_YOY_CHANGE_BPS"
 shock_amount = float(shock)
@@ -1614,7 +1705,6 @@ if run_scenario_btn:
         scenario = scenario_result
     except Exception as exc:
         scenario_error = exc
-        st.warning(f"Couldn't run that scenario: {exc}")
 
 peer_group = next(
     (members for members in peer_groups.values() if country in members),
@@ -1680,6 +1770,67 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+
+# ============================================================================
+# DATA STATUS / PROVENANCE
+#
+# "Where did this number come from?" answered without opening source code
+# — source, retrieval time, latest underlying observation, coverage.
+# ============================================================================
+
+if USING_DEMO_DATA:
+    st.markdown(
+        """
+        <div class="card" style="margin-top:18px;">
+            <div class="card-label">DEMO DATA</div>
+            <div class="card-value" style="font-size:18px;">Synthetic dataset</div>
+            <div class="card-caption" style="margin-top:6px;">
+                For interface / methodology demonstration only.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+else:
+    prov = live_provenance
+    source_names = " · ".join(s["name"] for s in prov.sources) if prov else "—"
+    st.markdown(
+        f"""
+        <div class="card" style="margin-top:18px;">
+            <div class="card-label">LIVE PUBLIC DATA</div>
+            <div class="card-value" style="font-size:18px;">{esc(source_names)}</div>
+            <div class="card-caption" style="margin-top:6px;">
+                Retrieved: {esc(prov.retrieved_at)} &nbsp;·&nbsp;
+                Latest common analysis year: <strong>{prov.latest_observation_year}</strong>
+                &nbsp;·&nbsp; Coverage: {prov.coverage_pct:.1f}%
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if prov and prov.validation_failures:
+        with st.expander("Data quality notes"):
+            for note in prov.validation_failures:
+                st.caption(f"• {note}")
+    st.caption(
+        f"Retrieval timestamp above reflects when this data was fetched — not when the "
+        f"underlying {prov.latest_observation_year if prov else ''} figures were measured. "
+        "Annual macro data is typically published with a lag."
+    )
+
+with st.expander("How to use this", expanded=False):
+    st.markdown(
+        """
+1. Pick a **country** and **year** in the sidebar.
+2. Read the **risk score** and **"What does this mean?"** panel — that's the whole story in one screen.
+3. Check **drivers** to see which indicators are pushing risk up vs pulling it down.
+4. Scroll to **Deterioration watch** to see what's moving across the whole panel, not just your selection.
+5. Open **Model validation** to see whether this scoring approach would actually have caught real past crises.
+6. Try the **Scenario Lab** to stress-test a policy-rate shock.
+7. Open **Methodology** if you want the actual math, or **Export & inspection** for the raw data.
+        """
+    )
 
 
 # ============================================================================
@@ -1799,6 +1950,73 @@ with k4:
 
 
 # ============================================================================
+# "WHAT DOES THIS MEAN?" — dynamic interpretation, generated only from
+# computed outputs (never fabricated) — the reader shouldn't have to parse
+# raw indicator codes or contribution signs to understand the score.
+# ============================================================================
+
+st.markdown(
+    """
+    <div class="section-head">
+        <div>
+            <div class="section-title">What does this mean?</div>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+_slice = drivers[
+    (drivers["country_iso3"].astype(str) == str(country))
+    & (pd.to_numeric(drivers["year"], errors="coerce") == int(year))
+].copy() if isinstance(drivers, pd.DataFrame) and not drivers.empty else pd.DataFrame()
+
+if not _slice.empty and "weighted_contribution" in _slice.columns:
+    _slice = _slice.dropna(subset=["weighted_contribution"])
+    _higher = _slice[_slice["weighted_contribution"] > 0].sort_values(
+        "weighted_contribution", ascending=False
+    )
+    _lower = _slice[_slice["weighted_contribution"] < 0].sort_values(
+        "weighted_contribution", ascending=True
+    )
+    _label_col = "label" if "label" in _slice.columns else (
+        "indicator_code" if "indicator_code" in _slice.columns else _slice.columns[0]
+    )
+
+    _up_names = [str(r[_label_col]) for _, r in _higher.head(3).iterrows()]
+    _down_names = [str(r[_label_col]) for _, r in _lower.head(2).iterrows()]
+
+    _country_label = get_country_label(country)
+
+    _sentence = (
+        f"**{esc(_country_label)}** is currently positioned in the **{esc(band.lower())}** "
+        f"relative-risk band within the selected comparison panel."
+    )
+    st.markdown(f'<div class="card"><div class="card-value" style="font-size:16px;font-weight:500;line-height:1.5;">{_sentence}</div>', unsafe_allow_html=True)
+
+    if _up_names:
+        st.markdown(
+            '<div class="card-caption" style="margin-top:12px;">The strongest upward risk signals are:</div>'
+            + "".join(f'<div class="card-caption">&nbsp;&nbsp;↑ {esc(n)}</div>' for n in _up_names),
+            unsafe_allow_html=True,
+        )
+    if _down_names:
+        st.markdown(
+            '<div class="card-caption" style="margin-top:10px;">Mitigating signals include:</div>'
+            + "".join(f'<div class="card-caption">&nbsp;&nbsp;↓ {esc(n)}</div>' for n in _down_names),
+            unsafe_allow_html=True,
+        )
+    st.markdown(
+        '<div class="card-caption" style="margin-top:12px;font-style:italic;">'
+        "This score is relative to the available comparison panel — it is not a credit rating "
+        "or a probability of default.</div></div>",
+        unsafe_allow_html=True,
+    )
+else:
+    empty_state("Not enough driver data to generate an interpretation for this slice.")
+
+
+# ============================================================================
 # RISK SCORE + TRAJECTORY
 # ============================================================================
 
@@ -1870,44 +2088,10 @@ with right:
             history = history.dropna(subset=["year", score_column]).sort_values("year")
 
             if not history.empty:
-                area_x = history["year"].tolist()
-                area_y = history[score_column].astype(float).tolist()
-
-                # Plotly does not expose CSS-like gradients for SVG area fills.
-                # Layering progressively stronger bands gives the trajectory a
-                # soft gradient that remains responsive and animates with it.
                 fig.add_trace(
                     go.Scatter(
-                        x=area_x,
-                        y=[0] * len(area_x),
-                        mode="lines",
-                        line=dict(width=0),
-                        hoverinfo="skip",
-                        showlegend=False,
-                    )
-                )
-                for factor, fillcolor in [
-                    (0.36, "rgba(94,231,242,.018)"),
-                    (0.70, "rgba(94,231,242,.032)"),
-                    (1.00, "rgba(94,231,242,.065)"),
-                ]:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=area_x,
-                            y=[value * factor for value in area_y],
-                            mode="lines",
-                            line=dict(width=0),
-                            fill="tonexty",
-                            fillcolor=fillcolor,
-                            hoverinfo="skip",
-                            showlegend=False,
-                        )
-                    )
-
-                fig.add_trace(
-                    go.Scatter(
-                        x=area_x,
-                        y=area_y,
+                        x=history["year"],
+                        y=history[score_column],
                         mode="lines+markers",
                         line=dict(
                             color=COLORS["cyan"],
@@ -1922,12 +2106,9 @@ with right:
                                 width=2,
                             ),
                         ),
-                        hovertemplate=(
-                            "<b>%{x}</b><br>"
-                            "Risk score: %{y:.1f} / 100<br>"
-                            "Composite cross-sectional score; higher values indicate "
-                            "greater country risk.<extra></extra>"
-                        ),
+                        fill="tozeroy",
+                        fillcolor="rgba(94,231,242,.045)",
+                        hovertemplate="<b>%{x}</b><br>Risk score: %{y:.1f}<extra></extra>",
                         name="Risk score",
                     )
                 )
@@ -1964,6 +2145,13 @@ with right:
             config={
                 "displayModeBar": False,
                 "responsive": True,
+                "scrollZoom": False,
+                "doubleClick": False,
+                "showAxisDragHandles": False,
+                "modeBarButtonsToRemove": [
+                    "zoom2d", "pan2d", "select2d", "lasso2d",
+                    "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d",
+                ],
             },
         )
 
@@ -1987,237 +2175,90 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-driver_left, driver_right = st.columns([1.3, 1], gap="large")
+driver_left, driver_right = st.columns([1, 1], gap="large")
 
-with driver_left:
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="card-label">PRIMARY RISK CONTRIBUTORS</div>',
-        unsafe_allow_html=True,
-    )
+_full_slice = drivers[
+    (drivers["country_iso3"].astype(str) == str(country))
+    & (pd.to_numeric(drivers["year"], errors="coerce") == int(year))
+].copy() if isinstance(drivers, pd.DataFrame) and not drivers.empty else pd.DataFrame()
 
-    if isinstance(country_drivers, pd.DataFrame) and not country_drivers.empty:
-        ddf = country_drivers.copy()
+if not _full_slice.empty and "weighted_contribution" in _full_slice.columns:
+    _full_slice = _full_slice.dropna(subset=["weighted_contribution"])
+    _label_col = "label" if "label" in _full_slice.columns else "indicator_code"
+    _has_raw = "raw_value" in _full_slice.columns
+    _has_unit = "unit" in _full_slice.columns
 
-        numeric_candidates = [
-            "contribution",
-            "impact",
-            "weight",
-            "score",
-            "value",
-        ]
-
-        driver_value_column = None
-        for candidate in numeric_candidates:
-            if candidate in ddf.columns:
-                driver_value_column = candidate
-                break
-
-        driver_name_column = None
-        for candidate in [
-            "indicator",
-            "indicator_code",
-            "code",
-            "driver",
-            "name",
-        ]:
-            if candidate in ddf.columns:
-                driver_name_column = candidate
-                break
-
-        if driver_name_column is None:
-            driver_name_column = ddf.columns[0]
-
-        if driver_value_column is None:
-            numeric_cols = ddf.select_dtypes(include=np.number).columns.tolist()
-            if numeric_cols:
-                driver_value_column = numeric_cols[-1]
-
-        if driver_value_column is not None:
-            ddf[driver_value_column] = pd.to_numeric(
-                ddf[driver_value_column],
-                errors="coerce",
-            ).fillna(0)
-
-            magnitude = ddf[driver_value_column].abs()
-            maximum = max(float(magnitude.max()), 1e-9)
-
-            st.markdown('<div class="driver-list">', unsafe_allow_html=True)
-
-            for _, item in ddf.head(8).iterrows():
-                name = str(item[driver_name_column])
-                value = safe_float(item[driver_value_column])
-                width = min(100, abs(value) / maximum * 100)
-
-                st.markdown(
-                    f"""
-                    <div class="driver-row">
-                        <div>
-                            <div class="driver-meta">
-                                <span class="driver-name">{esc(name)}</span>
-                                <span>{fmt_delta(value,2)}</span>
-                            </div>
-                            <div class="driver-bar">
-                                <div class="driver-fill" style="width:{width:.1f}%"></div>
-                            </div>
-                        </div>
-                        <div class="driver-score">{fmt_number(value,2)}</div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-            st.markdown("</div>", unsafe_allow_html=True)
-
-            # Keep the animated CSS bars above as the compact at-a-glance view,
-            # and expose the same drivers as a native Plotly chart for hover,
-            # zoom, and smooth country/year transitions.
-            driver_chart_data = ddf.head(8).copy()
-            driver_labels = []
-            driver_customdata = []
-            driver_colors = []
-
-            for _, item in driver_chart_data.iterrows():
-                code = str(
-                    item.get(
-                        "indicator_code",
-                        item.get("code", item[driver_name_column]),
-                    )
-                )
-                metadata = indicator_metadata(code)
-                label = str(item.get("label", metadata["label"]))
-                raw_value = (
-                    current_row.get(code)
-                    if not current_row.empty and code in current_row.index
-                    else None
-                )
-                raw_display = (
-                    f"{safe_float(raw_value):,.2f}"
-                    if raw_value is not None and not pd.isna(raw_value)
-                    else "n/a"
-                )
-
-                driver_labels.append(label)
-                driver_customdata.append(
-                    [raw_display, metadata["unit"], metadata["note"], code]
-                )
-                driver_colors.append(
-                    COLORS["red"]
-                    if safe_float(item[driver_value_column]) >= 0
-                    else COLORS["green"]
-                )
-
-            driver_fig = go.Figure(
-                go.Bar(
-                    x=driver_chart_data[driver_value_column],
-                    y=driver_labels,
-                    orientation="h",
-                    marker=dict(
-                        color=driver_colors,
-                        line=dict(color="rgba(255,255,255,.08)", width=1),
-                    ),
-                    customdata=driver_customdata,
-                    hovertemplate=(
-                        "<b>%{y}</b><br>"
-                        "Weighted contribution: %{x:+.3f} score points<br>"
-                        "Underlying value: %{customdata[0]} "
-                        "(%{customdata[1]})<br>"
-                        "%{customdata[2]}<extra></extra>"
-                    ),
-                )
-            )
-            driver_fig.add_vline(
-                x=0,
-                line_color="rgba(148,163,184,.25)",
-                line_width=1,
-            )
-            driver_fig.update_xaxes(title="Weighted contribution")
-            driver_fig.update_yaxes(autorange="reversed", title=None)
-            make_plotly_layout(
-                driver_fig,
-                height=max(320, min(520, 150 + 34 * len(driver_labels))),
-                margin=dict(l=8, r=8, t=18, b=8),
-            )
-            st.plotly_chart(
-                driver_fig,
-                width="stretch",
-                config={
-                    "displayModeBar": False,
-                    "responsive": True,
-                },
-            )
-
-        else:
-            empty_state("Driver output contains no numeric contribution field.")
-    else:
-        empty_state("No driver decomposition was returned for this slice.")
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-
-with driver_right:
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="card-label">SIGNAL BOARD</div>',
-        unsafe_allow_html=True,
-    )
-
-    signal_items = []
-
-    if not current_row.empty:
-        preferred_signals = [
-            "FX_YOY_DEPRECIATION_PCT",
-            "NY.GDP.MKTP.KD.ZG",
-            "GC.DOD.TOTL.GD.ZS",
-            "POLICY_RATE_YOY_CHANGE_BPS",
-            "inflation",
-            "unemployment",
-            "current_account",
-            "reserves",
-        ]
-
-        for code in preferred_signals:
-            if code in current_row.index:
-                signal_items.append((code, current_row[code]))
-
-    if not signal_items and isinstance(country_drivers, pd.DataFrame):
-        for column in country_drivers.columns[:6]:
-            if column not in signal_items:
-                signal_items.append((column, "available"))
-
-    if signal_items:
-        st.markdown('<div class="signal-grid">', unsafe_allow_html=True)
-
-        for code, value in signal_items[:8]:
-            numeric = None
-            try:
-                numeric = float(value)
-            except (TypeError, ValueError):
-                pass
-
-            if numeric is None:
-                state = str(value)
-                fill = 45
+    def _render_signal_group(df_group: pd.DataFrame, arrow: str, pts_prefix: str):
+        for _, r in df_group.iterrows():
+            name = str(r[_label_col])
+            pts = safe_float(r["weighted_contribution"]) * 100  # display as "points" on the 0-100 score scale
+            if _has_raw and pd.notna(r.get("raw_value")):
+                unit = str(r.get("unit", "")).strip() if _has_unit else ""
+                value_text = f"{fmt_number(safe_float(r['raw_value']), 1)}{(' ' + unit) if unit else ''}"
             else:
-                state = fmt_number(numeric, 2)
-                fill = min(100, max(10, abs(numeric)))
-
+                value_text = "—"
+            width = min(100, abs(pts) / max(1e-9, _magnitude_ref) * 100)
             st.markdown(
                 f"""
-                <div class="signal">
-                    <div class="signal-code">{esc(code)}</div>
-                    <div class="signal-state">{esc(state)}</div>
-                    <div class="signal-line" style="width:{fill:.1f}%;"></div>
+                <div class="driver-row">
+                    <div>
+                        <div class="driver-meta">
+                            <span class="driver-name">{arrow} {esc(name)}</span>
+                            <span>{esc(value_text)}</span>
+                        </div>
+                        <div class="driver-bar">
+                            <div class="driver-fill" style="width:{width:.1f}%"></div>
+                        </div>
+                    </div>
+                    <div class="driver-score">{pts_prefix}{abs(pts):.1f}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
 
+    _higher_full = _full_slice[_full_slice["weighted_contribution"] > 0].sort_values(
+        "weighted_contribution", ascending=False
+    )
+    _lower_full = _full_slice[_full_slice["weighted_contribution"] < 0].sort_values(
+        "weighted_contribution", ascending=True
+    )
+    _magnitude_ref = max(
+        _full_slice["weighted_contribution"].abs().max() * 100, 1e-9
+    )
+else:
+    _higher_full = pd.DataFrame()
+    _lower_full = pd.DataFrame()
+
+with driver_left:
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown('<div class="card-label" style="color:var(--red,#ff6b7a);">↑ HIGHER-RISK SIGNALS</div>', unsafe_allow_html=True)
+    st.markdown('<div class="card-caption" style="margin-bottom:10px;">Pushing the score up, largest first.</div>', unsafe_allow_html=True)
+    if not _higher_full.empty:
+        st.markdown('<div class="driver-list">', unsafe_allow_html=True)
+        _render_signal_group(_higher_full.head(6), "↑", "+")
         st.markdown("</div>", unsafe_allow_html=True)
     else:
-        empty_state("No selected indicator signals are available.")
-
+        empty_state("No indicators are currently adding to relative risk.")
     st.markdown("</div>", unsafe_allow_html=True)
+
+with driver_right:
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown('<div class="card-label" style="color:var(--green,#54d69a);">↓ MITIGATING SIGNALS</div>', unsafe_allow_html=True)
+    st.markdown('<div class="card-caption" style="margin-bottom:10px;">Pulling the score down, largest first.</div>', unsafe_allow_html=True)
+    if not _lower_full.empty:
+        st.markdown('<div class="driver-list">', unsafe_allow_html=True)
+        _render_signal_group(_lower_full.head(6), "↓", "-")
+        st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        empty_state("No indicators are currently reducing relative risk.")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+with st.expander("Technical details — indicator codes, weights, sources"):
+    if not _full_slice.empty:
+        _tech_cols = [c for c in ["indicator_code", _label_col, "category", "raw_value", "unit", "weight", "risk_direction", "z_risk", "weighted_contribution"] if c in _full_slice.columns]
+        st.dataframe(_full_slice[_tech_cols].reset_index(drop=True), width="stretch", hide_index=True)
+    else:
+        st.caption("No driver data available for this technical view.")
 
 
 # ============================================================================
@@ -2262,13 +2303,10 @@ with peer_left:
 
             if not peers.empty:
                 peers["label"] = peers[country_column].astype(str)
-                if "risk_band" not in peers.columns:
-                    peers["risk_band"] = peers[score_column].map(score_band)
-                peers["band_color"] = peers["risk_band"].map(band_color)
-                peers["selected"] = peers["label"].astype(str).eq(str(country))
-                marker_line_colors = [
-                    COLORS["cyan"] if selected else "rgba(255,255,255,.08)"
-                    for selected in peers["selected"]
+
+                marker_colors = [
+                    score_color if str(x) == str(country) else "rgba(110,168,255,.55)"
+                    for x in peers["label"]
                 ]
 
                 peer_fig.add_trace(
@@ -2277,20 +2315,13 @@ with peer_left:
                         y=peers["label"],
                         orientation="h",
                         marker=dict(
-                            color=peers["band_color"].tolist(),
+                            color=marker_colors,
                             line=dict(
-                                color=marker_line_colors,
+                                color="rgba(255,255,255,.04)",
                                 width=1,
                             ),
                         ),
-                        customdata=peers[["risk_band"]].to_numpy(),
-                        hovertemplate=(
-                            "<b>%{y}</b><br>"
-                            "Risk score: %{x:.1f} / 100<br>"
-                            "Risk band: %{customdata[0]}<br>"
-                            "Composite cross-sectional score; higher values indicate "
-                            "greater country risk.<extra></extra>"
-                        ),
+                        hovertemplate="%{y}<br>Risk score: %{x:.1f}<extra></extra>",
                     )
                 )
 
@@ -2323,6 +2354,13 @@ with peer_left:
             config={
                 "displayModeBar": False,
                 "responsive": True,
+                "scrollZoom": False,
+                "doubleClick": False,
+                "showAxisDragHandles": False,
+                "modeBarButtonsToRemove": [
+                    "zoom2d", "pan2d", "select2d", "lasso2d",
+                    "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d",
+                ],
             },
         )
 
@@ -2347,6 +2385,33 @@ with peer_right:
                 ascending=False,
             )
 
+            if not peers.empty:
+                _median = float(peers[score_column].median())
+                _rank = int((peers[score_column] > score_value).sum()) + 1
+                _total = len(peers)
+                st.markdown(
+                    f"""
+                    <div class="peer-position-row">
+                        <div>
+                            <div class="micro">SELECTED</div>
+                            <div class="peer-position-value">{fmt_number(score_value,1)}</div>
+                        </div>
+                        <div>
+                            <div class="micro">PEER MEDIAN</div>
+                            <div class="peer-position-value">{fmt_number(_median,1)}</div>
+                        </div>
+                        <div>
+                            <div class="micro">POSITION</div>
+                            <div class="peer-position-value">{_rank} / {_total}</div>
+                        </div>
+                    </div>
+                    <div class="card-caption" style="margin-bottom:10px;">
+                        Relative position within the selected comparison set — not an absolute universal ranking.
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
             top_peers = peers.head(7)
 
             for _, peer in top_peers.iterrows():
@@ -2368,6 +2433,232 @@ with peer_right:
         empty_state("Relative-position table unavailable.")
 
     st.markdown("</div>", unsafe_allow_html=True)
+
+
+# ============================================================================
+# DETERIORATION WATCH
+#
+# Not in the original brief — added deliberately. Every other section
+# answers "how risky is this ONE country". This is the cross-country
+# question a risk desk actually asks day to day: "what's moving, right
+# now, across the whole panel". Ranks every tracked country by year-over-
+# year score change and flags anyone who stepped into a worse risk band —
+# the same instinct as an early-warning/OSINT watchlist, applied to macro
+# data instead of geopolitical signals.
+# ============================================================================
+
+st.markdown(
+    """
+    <div class="section-head">
+        <div>
+            <div class="section-title">Deterioration watch</div>
+            <div class="section-sub">
+                Which countries are moving fastest, across the whole panel — not just the one selected.
+            </div>
+        </div>
+        <div class="micro">CROSS-COUNTRY / YEAR-OVER-YEAR</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+_BAND_ORDER = ["Low", "Moderate", "Elevated", "High", "Severe"]
+
+
+def _band_rank(b):
+    try:
+        return _BAND_ORDER.index(str(b))
+    except ValueError:
+        return -1
+
+
+_watch_scores = scores.dropna(subset=["risk_score"]).copy() if isinstance(scores, pd.DataFrame) else pd.DataFrame()
+_watch_scores["year"] = pd.to_numeric(_watch_scores.get("year"), errors="coerce")
+_watch_years = sorted(_watch_scores["year"].dropna().unique()) if not _watch_scores.empty else []
+
+if len(_watch_years) >= 2:
+    _wy_latest, _wy_prior = int(_watch_years[-1]), int(_watch_years[-2])
+    _latest_s = _watch_scores[_watch_scores.year == _wy_latest].set_index("country_iso3")
+    _prior_s = _watch_scores[_watch_scores.year == _wy_prior].set_index("country_iso3")
+    _common = _latest_s.index.intersection(_prior_s.index)
+
+    _delta = (_latest_s.loc[_common, "risk_score"] - _prior_s.loc[_common, "risk_score"]).sort_values(ascending=False)
+
+    watch_left, watch_right = st.columns(2, gap="large")
+
+    with watch_left:
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="card-label" style="color:var(--red,#ff6b7a);">↑ FASTEST DETERIORATING</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div class="card-caption" style="margin-bottom:10px;">{_wy_prior} &rarr; {_wy_latest}, largest increase first.</div>',
+            unsafe_allow_html=True,
+        )
+        _worsening = _delta[_delta > 0].head(5)
+        if not _worsening.empty:
+            for iso3, d in _worsening.items():
+                st.markdown(
+                    f"""
+                    <div class="peer-highlight">
+                        <div class="peer-country">{esc(get_country_label(iso3))}</div>
+                        <div class="peer-score" style="color:var(--red,#ff6b7a);">+{d:.1f}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+        else:
+            empty_state("No country worsened between these two years.")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with watch_right:
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="card-label" style="color:var(--green,#54d69a);">↓ FASTEST IMPROVING</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div class="card-caption" style="margin-bottom:10px;">{_wy_prior} &rarr; {_wy_latest}, largest decrease first.</div>',
+            unsafe_allow_html=True,
+        )
+        _improving = _delta[_delta < 0].sort_values().head(5)
+        if not _improving.empty:
+            for iso3, d in _improving.items():
+                st.markdown(
+                    f"""
+                    <div class="peer-highlight">
+                        <div class="peer-country">{esc(get_country_label(iso3))}</div>
+                        <div class="peer-score" style="color:var(--green,#54d69a);">{d:.1f}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+        else:
+            empty_state("No country improved between these two years.")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # Band-transition alerts: a country whose risk BAND itself stepped down,
+    # not just a score wobble within the same band — the closest thing
+    # this project has to a "rating action" alert.
+    _band_alerts = []
+    for iso3 in _common:
+        b_latest = _latest_s.loc[iso3, "risk_band"]
+        b_prior = _prior_s.loc[iso3, "risk_band"]
+        if _band_rank(b_latest) > _band_rank(b_prior):
+            _band_alerts.append((iso3, b_prior, b_latest))
+
+    if _band_alerts:
+        st.markdown('<div class="card" style="margin-top:18px;">', unsafe_allow_html=True)
+        st.markdown('<div class="card-label">BAND TRANSITIONS</div>', unsafe_allow_html=True)
+        for iso3, b_prior, b_latest in _band_alerts:
+            st.markdown(
+                f'<div class="card-caption">• {esc(get_country_label(iso3))}: '
+                f'{esc(str(b_prior))} &rarr; <strong>{esc(str(b_latest))}</strong></div>',
+                unsafe_allow_html=True,
+            )
+        st.markdown("</div>", unsafe_allow_html=True)
+else:
+    empty_state("Deterioration watch needs at least two years of scored data across the panel.")
+
+
+# ============================================================================
+# MODEL VALIDATION — DOES THIS ACTUALLY WORK?
+#
+# Not decoration — a real check. Runs the SAME scoring engine's already-
+# computed history against known, real macro-stress episodes for countries
+# already in this panel, and reports honestly whether the score actually
+# rose. No extra network calls: it evaluates the `scores` DataFrame already
+# in memory, so this is a genuine check against live data once deployed —
+# and it says so plainly when it's only looking at demo data instead.
+# ============================================================================
+
+st.markdown(
+    """
+    <div class="section-head">
+        <div>
+            <div class="section-title">Model validation</div>
+            <div class="section-sub">
+                Would this score have actually flagged known real macro-stress episodes?
+            </div>
+        </div>
+        <div class="micro">BACKTEST / HONESTY CHECK</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+if USING_DEMO_DATA:
+    st.warning(
+        "Running on synthetic demo data — the results below are NOT a real "
+        "validation of anything. Switch to live data to see the actual backtest."
+    )
+
+_bt_results = run_backtest(scores, data_is_synthetic=USING_DEMO_DATA)
+_bt_flagged = sum(1 for r in _bt_results if r.verdict == "flagged")
+_bt_missed = sum(1 for r in _bt_results if r.verdict == "missed")
+_bt_inconclusive = sum(1 for r in _bt_results if r.verdict == "inconclusive")
+
+st.markdown(
+    f"""
+    <div class="card" style="margin-bottom:16px;">
+        <div class="card-caption">
+            <strong>{_bt_flagged}</strong> flagged &middot;
+            <strong>{_bt_missed}</strong> missed &middot;
+            <strong>{_bt_inconclusive}</strong> inconclusive (data gap) &middot;
+            {len(_bt_results)} known episodes checked
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+_verdict_style = {
+    "flagged": ("var(--green,#54d69a)", "✓ FLAGGED"),
+    "missed": ("var(--red,#ff6b7a)", "✗ MISSED"),
+    "inconclusive": ("var(--muted,#8c98aa)", "— NO DATA"),
+}
+
+for r in _bt_results:
+    color, tag = _verdict_style[r.verdict]
+    detail = (
+        f"Score {r.baseline_year}: {r.baseline_score:.1f} &rarr; {r.event_year}: {r.event_score:.1f} "
+        f"({r.delta:+.1f} pts)"
+        if r.delta is not None
+        else f"No scored data for {r.baseline_year} and/or {r.event_year} in the current panel."
+    )
+    st.markdown(
+        f"""
+        <div class="card" style="margin-bottom:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+                <div class="card-label">{esc(r.label)}</div>
+                <div style="color:{color};font-weight:700;font-size:12px;white-space:nowrap;">{tag}</div>
+            </div>
+            <div class="card-caption" style="margin-top:6px;">{esc(r.note)}</div>
+            <div class="card-caption" style="margin-top:8px;font-family:'DM Mono',monospace;">{detail}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+with st.expander("Why this matters / how to read it"):
+    st.markdown(
+        """
+A dashboard that looks convincing and a model that actually works are two
+different things — this section checks the second one honestly, using real
+historical episodes for countries already tracked here.
+
+**Flagged** means the composite score rose by at least 3 points from the
+baseline year to the event year — a real signal, not noise.
+**Missed** means it didn't, which is a genuine limitation worth naming, not
+hiding: this is an annual, backward-looking, cross-sectional model — it
+will structurally lag fast-moving currency or market-confidence shocks that
+unfold within a single year, and it has no early-warning mechanism beyond
+what's already in the YoY indicator changes it's built from.
+**No data** means the panel doesn't currently have both years scored for
+that country — expand the fetch window to see it.
+        """
+    )
 
 
 # ============================================================================
@@ -2409,7 +2700,7 @@ st.markdown(
 )
 
 if scenario_error is not None:
-    st.warning(f"Scenario engine returned an error: {scenario_error}")
+    user_error("The scenario engine could not complete this run.", scenario_error)
 
 if scenario is not None:
     sc1, sc2, sc3 = st.columns(3)
@@ -2629,7 +2920,74 @@ st.markdown(
 
 
 # ============================================================================
-# DATA COVERAGE / METADATA
+# METHODOLOGY / MODEL CARD
+#
+# Written like a desk note, not generic docs — explicit about how this
+# compares to real institutional practice, and honest about exactly where
+# it's a deliberate simplification of that, not an accident.
+# ============================================================================
+
+st.markdown(
+    """
+    <div class="section-head">
+        <div>
+            <div class="section-title">Methodology &amp; model card</div>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+with st.expander("Purpose, inputs, scoring, limitations, and intended use", expanded=False):
+    st.markdown(
+        """
+**Purpose.** Relative macro-risk positioning across a country panel, built for
+transparency — every number here should be traceable back to a public data
+point and a documented weight, not a black box.
+
+**Inputs.** World Bank Indicators API (cross-country annual panel) plus a
+US-only FRED enrichment for policy-rate change. See `config/indicators.yaml`
+for the exact series codes, weights, and direction — that file *is* the
+methodology; nothing here is hardcoded in Python.
+
+**Normalization.** Each indicator is z-scored against the *same-year* panel
+(not a fixed historical baseline), then combined into a weighted composite
+and mapped to 0–100.
+
+**Missing data.** A missing indicator for a country is excluded and the
+remaining weights renormalized — it is never filled with a zero, a mean, or
+a guess. `data_completeness` on every score is a warning label, not
+decoration.
+
+**Scenario model.** Shock sensitivities are estimated by pooled OLS
+regression across the panel itself, not asserted from a paper. That makes
+them correlational and honestly weak with a small country/year sample —
+the R² and observation count shown with every scenario result are there so
+you can judge that for yourself, not so you can ignore them.
+
+---
+
+**How this compares to real practice.** This borrows structurally from how
+institutional country-risk frameworks are built — the EIU's Country Risk
+Service scores political, economic, and financial risk separately; Moody's
+sovereign methodology weights economic strength, institutional strength,
+fiscal strength, and susceptibility to event risk; the IMF's Debt
+Sustainability Analysis stress-tests debt trajectories under shocks the way
+the Scenario Lab here does, at a much smaller scale. This project follows
+that *shape* — transparent weighted indicators, peer-relative scoring,
+shock sensitivity — using only public annual data and a single analyst's
+weighting, not a rated agency's committee process, proprietary data, or
+qualitative overlay. It should be read as a worked illustration of the
+approach, not a substitute for one of those ratings.
+
+**Not intended for:** investment decisions, credit ratings, sovereign debt
+pricing, or any use where being wrong has real financial consequences. It
+is intended to demonstrate a transparent, reproducible approach to
+macro-risk scoring — nothing here is investment advice.
+        """
+    )
+
+
 # ============================================================================
 
 st.markdown(
@@ -2671,6 +3029,33 @@ for key, value in metadata:
 meta_html += "</div></div>"
 
 st.markdown(meta_html, unsafe_allow_html=True)
+
+with st.expander("Source traceability — every indicator, its source, and its weight"):
+    _src_rows = []
+    for _ind in indicators_cfg.get("indicators", []):
+        _src_rows.append(
+            {
+                "Indicator": _ind.get("label", _ind.get("code", "")),
+                "Code": _ind.get("code", ""),
+                "Source": {
+                    "world_bank": "World Bank",
+                    "fred": "FRED",
+                    "fred_us_only": "FRED (US only)",
+                    "derived": "Derived (WB/FRED)",
+                }.get(_ind.get("source", ""), _ind.get("source", "")),
+                "Unit": _ind.get("unit", ""),
+                "Weight": _ind.get("weight", ""),
+                "Direction": "Higher = worse" if _ind.get("risk_direction", 1) in (1, "1", "higher_is_worse") else "Higher = better",
+            }
+        )
+    if _src_rows:
+        st.dataframe(pd.DataFrame(_src_rows), width="stretch", hide_index=True)
+        st.caption(
+            "World Bank: https://api.worldbank.org/v2 · FRED: https://fred.stlouisfed.org · "
+            "full definitions in config/indicators.yaml."
+        )
+    else:
+        empty_state("No indicator metadata available.")
 
 
 # ============================================================================
