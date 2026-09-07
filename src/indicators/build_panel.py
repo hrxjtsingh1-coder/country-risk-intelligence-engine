@@ -201,6 +201,127 @@ def _policy_rate_for_country(
     ].rename(columns={"change_bps": "value"})
 
 
+def _world_bank_indicator_batch(
+    session: requests.Session,
+    iso3_codes: list[str],
+    wb_code: str,
+    start: int,
+    end: int,
+    chunk_size: int = 60,
+) -> pd.DataFrame:
+    """
+    Same as _world_bank_indicator, but fetches ALL given countries for one
+    indicator in a single request (World Bank's API accepts semicolon-joined
+    ISO3 codes in the URL path). This is what fetch_live_panel() actually
+    calls: for a 20-country panel this turns "20 countries x 9 indicators
+    = 180 requests" into "9 requests", one per indicator — see Phase 5.
+    Chunked defensively at `chunk_size` countries per request in case the
+    configured country list ever grows past what a single URL should carry.
+    """
+    frames = []
+    codes = [c.strip().upper() for c in iso3_codes if c and c.strip()]
+    for i in range(0, len(codes), chunk_size):
+        chunk = codes[i : i + chunk_size]
+        url = WB_URL.format(country=";".join(chunk), indicator=wb_code)
+        params = {"format": "json", "per_page": 20000, "date": f"{start}:{end}"}
+
+        response = session.get(url, params=params, timeout=30)
+        response.raise_for_status()
+        payload = response.json()
+
+        if not isinstance(payload, list) or len(payload) < 2 or payload[1] is None:
+            # HTTP 200 with no data rows — bad indicator code or genuinely no
+            # data for this slice. Not an error; just nothing to add.
+            continue
+
+        for item in payload[1]:
+            value = item.get("value")
+            if value is None:
+                continue
+            try:
+                year_int = int(item.get("date"))
+            except (TypeError, ValueError):
+                continue
+            iso3 = item.get("countryiso3code") or (item.get("country") or {}).get("id")
+            if not iso3:
+                continue
+            frames.append(
+                {
+                    "country_iso3": str(iso3).upper(),
+                    "year": year_int,
+                    "value": value,
+                    "source": "World Bank",
+                    "flag": "ok",
+                }
+            )
+    return pd.DataFrame(frames)
+
+
+def build_long_panel_batched(
+    iso3_codes: Iterable[str],
+    start: int,
+    end: int,
+) -> pd.DataFrame:
+    """
+    Batched counterpart to build_long_panel(): one HTTP request per
+    World-Bank-sourced indicator (covering every configured country at
+    once) instead of one request per country per indicator. Derived
+    indicators (FX YoY, policy-rate YoY) still resolve per-country, since
+    those aren't plain World Bank series lookups. Used by the live runtime
+    provider (src/runtime/live_data.py); build_long_panel() above is kept
+    for local/CLI use where the simpler per-country code is easier to read
+    and step through.
+    """
+    session = _session()
+    records = indicator_records()
+    iso3_codes = [str(c).strip().upper() for c in iso3_codes if str(c).strip()]
+    output = []
+
+    for indicator in records:
+        code = str(indicator.get("code", "")).strip()
+        wb_code = indicator.get("world_bank")
+        source_type = indicator.get("source", "world_bank")
+        if not code:
+            continue
+
+        try:
+            if code == "FX_YOY_DEPRECIATION_PCT":
+                for iso3 in iso3_codes:
+                    frame = _build_fx_depreciation(session, iso3, start, end)
+                    if not frame.empty:
+                        output.append(frame)
+            elif code == "POLICY_RATE_YOY_CHANGE_BPS":
+                for iso3 in iso3_codes:
+                    frame = _policy_rate_for_country(session, iso3, start, end)
+                    if not frame.empty:
+                        output.append(frame)
+            elif wb_code and source_type == "world_bank":
+                raw = _world_bank_indicator_batch(session, iso3_codes, str(wb_code), start, end)
+                if not raw.empty:
+                    raw["indicator_code"] = code
+                    output.append(
+                        raw[["country_iso3", "indicator_code", "year", "value", "source", "flag"]]
+                    )
+        except requests.RequestException as exc:
+            LOG.warning("Batched source request failed for indicator %s: %s", code, exc)
+        except Exception as exc:  # noqa: BLE001 - one bad indicator must not sink the whole panel
+            LOG.warning("Indicator %s failed in batched fetch: %s", code, exc)
+
+    if not output:
+        return pd.DataFrame(columns=["country_iso3", "indicator_code", "year", "value", "source", "flag"])
+
+    panel = pd.concat(output, ignore_index=True)
+    panel["value"] = pd.to_numeric(panel["value"], errors="coerce")
+    panel["year"] = pd.to_numeric(panel["year"], errors="coerce")
+    panel = panel.dropna(subset=["year", "value"])
+    panel["year"] = panel["year"].astype(int)
+    panel["flag"] = panel.get("flag", "ok")
+
+    return panel[
+        ["country_iso3", "indicator_code", "year", "value", "source", "flag"]
+    ].drop_duplicates(subset=["country_iso3", "indicator_code", "year"], keep="last")
+
+
 def build_long_panel(
     iso3_codes: Iterable[str],
     start: int,
