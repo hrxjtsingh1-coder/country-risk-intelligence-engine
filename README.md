@@ -24,6 +24,8 @@ flowchart LR
 - Builds a country-year panel from World Bank Indicators API data, with a US-only FRED enrichment.
 - Flags missing, duplicate, and out-of-range observations before pivoting to the scoring panel.
 - Produces a deterministic 0–100 **relative** score, contributions, bands, peer comparisons, and rule-based commentary.
+- **Deterioration watch**: ranks every tracked country by year-over-year score change and flags anyone who stepped into a worse risk band — a cross-country early-warning view, not just a single-country readout.
+- **Model validation (backtest)**: checks the scoring engine's own historical output against known real macro-stress episodes (Turkiye 2018, Brazil 2015-16, South Africa's fiscal deterioration, the UK's 2022 gilt shock) and reports honestly whether the score actually rose — including when it didn't.
 - Records a JSON data vintage for live pipeline runs and exposes source series, units, transformations, weights, coverage, and source links in the UI.
 - Keeps synthetic demo data explicitly separate from live public data.
 
@@ -32,8 +34,8 @@ flowchart LR
 | Mode | UI label | Meaning |
 |---|---|---|
 | Demo | `DEMO DATA — SYNTHETIC DATASET` | Bundled deterministic fixture for UI/testing. **Not suitable for economic or investment decisions.** |
-| Live | `LIVE PUBLIC DATA` | Output from a completed local pipeline run with `data_metadata.json`. |
-| Unavailable | `LIVE DATA UNAVAILABLE` | No verified live vintage is present. The application offers an explicit **Open Demo Dataset** action; it does not silently substitute synthetic data. |
+| Live | `LIVE PUBLIC DATA` | Fetched automatically at runtime from the World Bank Indicators API (`src/runtime/live_data.py`) — no local pipeline run required. Cached 6 hours; **Refresh Live Data** forces a new fetch. |
+| Unavailable | `LIVE DATA UNAVAILABLE` | The runtime fetch failed or returned unusable data. The application offers an explicit **Open Demo Dataset** action; it does not silently substitute synthetic data. |
 
 Implemented sources:
 
@@ -89,22 +91,46 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-### Demo mode
+### Live mode (automatic)
 
 ```bash
 streamlit run dashboard/app.py
 ```
 
-With no verified live vintage, the first screen displays **LIVE DATA UNAVAILABLE**. Select **Open Demo Dataset** to intentionally load the synthetic fixture.
+No setup step required — on load, the app itself calls the World Bank
+Indicators API at runtime (`src/runtime/live_data.py`) for every country in
+`config/countries.yaml` and every indicator in `config/indicators.yaml`,
+batched one HTTP request per indicator (not per country), with retries and
+a 6-hour cache so switching country/year in the sidebar never triggers a
+new fetch. It automatically selects the newest year with enough
+cross-country coverage to score reliably (never just "the current calendar
+year") and shows a **LIVE PUBLIC DATA** card with source, retrieval time,
+latest observation year, and coverage — so where a number came from is
+always visible in the app itself, not just in the source code.
 
-### Live mode
+If the live fetch fails or returns unusable data, the app shows
+**LIVE DATA UNAVAILABLE** with exactly one explicit action — **Open Demo
+Dataset** — and never silently substitutes synthetic data for real data.
+From demo mode, **Return to Live Data** clears the cache and retries.
+**↻ Refresh Live Data** (shown once live data is loaded) forces a fresh
+fetch on demand.
+
+### Optional: offline pipeline
 
 ```bash
 python -m src.pipeline.run_all --countries USA,IND,DEU --start 2015 --end 2025
-streamlit run dashboard/app.py
 ```
 
-The collector retries transient HTTP failures with exponential backoff and logs per-series failures. A source failure produces missing coverage rather than invented observations. Streamlit Cloud should use `streamlit_app.py` as its main file; it re-executes the dashboard safely on reruns.
+Still useful for reproducible local runs or notebooks, but the deployed
+app no longer depends on its output existing on disk (Streamlit Community
+Cloud instances don't reliably persist local files between deploys) — live
+mode builds the panel in memory for the session instead.
+
+The collector retries transient HTTP failures with exponential backoff and
+logs per-series failures. A source failure produces missing coverage
+rather than invented observations. Streamlit Cloud should use
+`streamlit_app.py` as its main file; it re-executes the dashboard safely
+on reruns.
 
 ## Testing and deployment
 
@@ -113,12 +139,16 @@ pytest
 python -m compileall -q src dashboard scripts
 ```
 
-GitHub Actions runs `pytest` on pushes and pull requests. For deployment, configure Streamlit Community Cloud with this repository, Python dependencies from `requirements.txt`, and main file `streamlit_app.py`. To display live data, run the pipeline in a trusted scheduled environment and persist both `panel_wide.csv` and its matching `data_metadata.json`; do not commit credentials or represent an old output as freshly retrieved.
+GitHub Actions runs `pytest` on pushes and pull requests — live-data tests
+mock all HTTP calls (`tests/test_live_data.py`), so CI never depends on
+the real World Bank API being reachable. For deployment, configure
+Streamlit Community Cloud with this repository, Python dependencies from
+`requirements.txt`, and main file `streamlit_app.py`.
 
 ## Limitations and roadmap
 
-The model depends on public-source definitions, revisions, publication lags, and the selected country universe. Missing data alters effective weights and may conceal an unmeasured vulnerability. Future work includes source snapshots, documented multi-country policy-rate series, independent validation datasets, and scheduled provenance-aware refreshes.
+The model depends on public-source definitions, revisions, publication lags, and the selected country universe. Missing data alters effective weights and may conceal an unmeasured vulnerability. The backtest checks 4 known episodes against an annual, backward-looking, cross-sectional model — it will structurally lag fast-moving shocks that unfold within a single year, and a small episode count means "flagged" is encouraging, not proof. Future work includes source snapshots, documented multi-country policy-rate series, a larger backtest set, and scheduled provenance-aware refreshes.
 
 ## Recruiter view
 
-This project demonstrates data engineering (API collection, validation, SQLite-ready outputs, reproducible metadata), quantitative risk analysis (cross-sectional normalization, weighted contributions, sensitivity diagnostics), governance (source traceability, model limitations, responsible-language controls), and product design (institutional dark UI, mobile-aware layouts, explicit data states, quality centre, and exports). The intended evidence is not a claim of predictive authority; it is evidence of disciplined analytical engineering.
+This project demonstrates data engineering (batched API collection, validation, retries/backoff, reproducible provenance), quantitative risk analysis (cross-sectional normalization, weighted contributions, sensitivity diagnostics, historical backtesting against real crises), governance (source traceability, model limitations, responsible-language controls), and product design (institutional dark UI, mobile-aware layouts, explicit data states, onboarding, and exports). The intended evidence is not a claim of predictive authority; it is evidence of disciplined analytical engineering — including a model card that says plainly where the approach would and wouldn't hold up.
