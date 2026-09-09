@@ -2,6 +2,7 @@ indicators:
   - code: FP.CPI.TOTL.ZG
     label: Inflation
     category: Prices
+    pillar: Monetary Stability
     weight: 0.16
     risk_direction: 1
     source: world_bank
@@ -17,6 +18,7 @@ indicators:
   - code: NY.GDP.MKTP.KD.ZG
     label: Real GDP growth
     category: Growth
+    pillar: Macro Growth
     weight: 0.16
     risk_direction: -1
     source: world_bank
@@ -32,6 +34,7 @@ indicators:
   - code: SL.UEM.TOTL.ZS
     label: Unemployment
     category: Labor
+    pillar: Macro Growth
     weight: 0.10
     risk_direction: 1
     source: world_bank
@@ -47,6 +50,7 @@ indicators:
   - code: GC.DOD.TOTL.GD.ZS
     label: Public debt
     category: Fiscal
+    pillar: Fiscal Sustainability
     weight: 0.18
     risk_direction: 1
     source: world_bank
@@ -62,6 +66,7 @@ indicators:
   - code: BN.CAB.XOKA.GD.ZS
     label: Current account balance
     category: External
+    pillar: External Vulnerability
     weight: 0.09
     risk_direction: -1
     source: world_bank
@@ -77,6 +82,7 @@ indicators:
   - code: FI.RES.TOTL.MO
     label: FX reserves
     category: External
+    pillar: External Vulnerability
     weight: 0.10
     risk_direction: -1
     source: world_bank
@@ -92,6 +98,7 @@ indicators:
   - code: DT.DOD.DECT.GN.ZS
     label: External debt
     category: External
+    pillar: External Vulnerability
     weight: 0.09
     risk_direction: 1
     source: world_bank
@@ -107,6 +114,7 @@ indicators:
   - code: FB.AST.NPER.ZS
     label: Non-performing loans
     category: Banking
+    pillar: Banking Health
     weight: 0.06
     risk_direction: 1
     source: world_bank
@@ -122,6 +130,7 @@ indicators:
   - code: FX_YOY_DEPRECIATION_PCT
     label: Currency depreciation
     category: FX
+    pillar: External Vulnerability
     weight: 0.06
     risk_direction: 1
     source: derived
@@ -137,6 +146,7 @@ indicators:
   - code: POLICY_RATE_YOY_CHANGE_BPS
     label: Policy-rate change
     category: Monetary
+    pillar: Monetary Stability
     weight: 0.00
     risk_direction: 1
     source: fred_us_only
@@ -149,3 +159,21 @@ indicators:
     note: "US-only enrichment. Change in annual-average Effective Federal Funds Rate, not a direct policy-rate level or a multi-country signal. Excluded from composite score."
     min: -1000
     max: 1000
+
+  # IMF WEO indicators (supplementary — fills gaps where World Bank lags)
+  - code: IMF_REAL_EFFECTIVE_EXCHANGE_RATE
+    label: Real effective exchange rate
+    category: FX
+    pillar: External Vulnerability
+    weight: 0.00
+    risk_direction: 1
+    source: imf_ifs
+    imf_flow: IFS
+    imf_indicator: EREER_IX
+    source_url: "https://data.imf.org/?sk=4c2e81ca2f2599de495da2f36ad1d667"
+    frequency: annual
+    transformation: "Log change in real effective exchange rate index. Positive change = real appreciation (lower competitiveness, higher risk)."
+    unit: "index, log change"
+    note: "Supplementary FX indicator from IMF IFS. Not included in composite score until validated against World Bank FX depreciation."
+    min: -100
+    max: 100

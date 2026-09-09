@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from src.indicators.build_panel import _world_bank_indicator_batch
+from src.indicators.build_panel import FetchMetadata, _world_bank_indicator_batch
 from src.runtime.live_data import (
     LiveDataUnavailable,
     fetch_live_panel,
@@ -81,7 +81,8 @@ def test_select_latest_common_year_uses_newest_when_fully_covered():
 
 def test_fetch_live_panel_success_path():
     panel = _synthetic_long_panel(thin_latest_year=True)
-    with patch("src.runtime.live_data.build_long_panel_batched", return_value=panel):
+    meta = FetchMetadata()
+    with patch("src.runtime.live_data.build_long_panel_batched", return_value=(panel, meta)):
         result = fetch_live_panel(COUNTRIES, INDICATORS_CFG, 2020, 2025)
 
     assert result.latest_common_year == 2024
@@ -101,7 +102,8 @@ def test_fetch_live_panel_raises_cleanly_on_total_failure():
 
 
 def test_fetch_live_panel_raises_on_empty_response():
-    with patch("src.runtime.live_data.build_long_panel_batched", return_value=pd.DataFrame()):
+    meta = FetchMetadata()
+    with patch("src.runtime.live_data.build_long_panel_batched", return_value=(pd.DataFrame(), meta)):
         with pytest.raises(LiveDataUnavailable):
             fetch_live_panel(COUNTRIES, INDICATORS_CFG, 2020, 2025)
 

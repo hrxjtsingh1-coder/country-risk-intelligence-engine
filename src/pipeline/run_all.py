@@ -12,18 +12,17 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from pathlib import Path
 from datetime import datetime, timezone
+from pathlib import Path
 
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.append(str(ROOT))
 
 from src.cleaning.clean import coverage_report, to_wide_panel
 from src.commentary.generate_commentary import generate_report
 from src.db import db_utils
-from src.indicators.build_panel import build_long_panel
+from src.indicators.build_panel import build_long_panel_batched
 from src.scenario.scenario_engine import run_shock_scenario
 from src.scoring.risk_score import score_panel
 
@@ -81,7 +80,7 @@ def main():
     )
 
     started_at = datetime.now(timezone.utc)
-    long_panel = build_long_panel(iso3_codes, args.start, args.end)
+    long_panel, fetch_meta = build_long_panel_batched(iso3_codes, args.start, args.end)
 
     if long_panel.empty:
         print(
@@ -125,7 +124,7 @@ def main():
     (out_dir / "data_metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
     print("[2/6] Scoring...")
-    scores, drivers = score_panel(wide_panel)
+    scores, drivers, pillar_scores = score_panel(wide_panel)
 
     print("[3/6] Preparing scenario...")
     driver_code, amount_text = args.shock.split(":", 1)

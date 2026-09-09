@@ -9,11 +9,17 @@ Method:
 5. Renormalize over indicators actually observed for the country-year.
 6. Convert the weighted signal to a 0–100 score around a neutral midpoint.
 
+Scoring is pillar-based: each indicator belongs to a pillar (Monetary
+Stability, Macro Growth, Fiscal Sustainability, External Vulnerability,
+Banking Health). Pillar scores are computed independently, then the
+composite score is a weighted average of pillar scores.
+
 This is intentionally deterministic and inspectable.
 """
 
 from __future__ import annotations
 
+from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
@@ -22,6 +28,15 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = ROOT / "config" / "indicators.yaml"
+
+# Pillar display order
+PILLAR_ORDER = [
+    "Monetary Stability",
+    "Macro Growth",
+    "Fiscal Sustainability",
+    "External Vulnerability",
+    "Banking Health",
+]
 
 
 def _load_config() -> dict:
@@ -59,6 +74,15 @@ def _indicator_map() -> dict[str, dict]:
     return records
 
 
+def _pillar_weights(indicator_map: dict[str, dict]) -> dict[str, float]:
+    """Compute total weight per pillar from indicator weights."""
+    pw: dict[str, float] = defaultdict(float)
+    for code, meta in indicator_map.items():
+        pillar = meta.get("pillar", "Other")
+        pw[pillar] += float(meta.get("weight", 0))
+    return dict(pw)
+
+
 def _zscore(series: pd.Series) -> pd.Series:
     numeric = pd.to_numeric(series, errors="coerce")
     mean = numeric.mean()
@@ -68,6 +92,11 @@ def _zscore(series: pd.Series) -> pd.Series:
         return pd.Series(0.0, index=series.index)
 
     return (numeric - mean) / std
+
+
+def _score_from_signal(normalized_signal: float) -> float:
+    """Map a normalized signal (typically -1..+1) to a 0-100 score."""
+    return float(np.clip(50.0 + 18.0 * normalized_signal, 0.0, 100.0))
 
 
 def score_panel(panel: pd.DataFrame):
@@ -88,14 +117,26 @@ def score_panel(panel: pd.DataFrame):
                     "year",
                     "indicator_code",
                     "category",
+                    "pillar",
                     "z_risk",
                     "weighted_contribution",
                     "label",
                 ]
             ),
+            pd.DataFrame(
+                columns=[
+                    "country_iso3",
+                    "year",
+                    "pillar",
+                    "pillar_score",
+                    "pillar_band",
+                    "pillar_weight",
+                ]
+            ),
         )
 
     cfg = _indicator_map()
+    pillar_w = _pillar_weights(cfg)
 
     working = panel.copy()
 
@@ -131,6 +172,7 @@ def score_panel(panel: pd.DataFrame):
                     "year": working["year"],
                     "indicator_code": code,
                     "category": meta.get("category", "Macro"),
+                    "pillar": meta.get("pillar", "Other"),
                     "label": meta.get("label", code),
                     "raw_value": values,
                     "unit": meta.get("unit", ""),
@@ -149,7 +191,7 @@ def score_panel(panel: pd.DataFrame):
 
     drivers = pd.concat(driver_frames, ignore_index=True)
 
-    # Normalize by the available configured weight for each country-year.
+    # --- Composite score (same logic as before, unchanged) ---
     group_keys = ["country_iso3", "year"]
 
     available_weight = (
@@ -163,8 +205,6 @@ def score_panel(panel: pd.DataFrame):
 
     valid = drivers["_available"] & drivers["_available_weight"].gt(0)
 
-    # A cross-sectional z-score has 0 as the panel midpoint. Mapping it through
-    # a bounded logistic-like transform produces an interpretable 0–100 scale.
     normalized_signal = (
         drivers["weighted_contribution"]
         .where(valid, 0.0)
@@ -175,13 +215,10 @@ def score_panel(panel: pd.DataFrame):
 
     normalized_signal = normalized_signal.fillna(0.0)
 
-    score = 50.0 + 18.0 * normalized_signal
-    score = score.clip(0.0, 100.0)
+    score = normalized_signal.apply(_score_from_signal)
 
-    completeness = (
-        drivers["_available_weight"]
-        / sum(float(m.get("weight", 0)) for m in cfg.values())
-    ).clip(0.0, 1.0)
+    total_weight = sum(float(m.get("weight", 0)) for m in cfg.values())
+    completeness = (drivers["_available_weight"] / total_weight).clip(0.0, 1.0)
 
     scores = working[["country_iso3", "year"]].copy()
     scores["risk_score"] = score
@@ -194,12 +231,25 @@ def score_panel(panel: pd.DataFrame):
         .reset_index(drop=True)
     )
 
+    # --- Pillar scores ---
+    pillar_scores = _compute_pillar_scores(drivers, cfg, pillar_w, group_keys)
+
+    # Merge pillar scores into the scores DataFrame
+    if not pillar_scores.empty:
+        for pillar_name in PILLAR_ORDER:
+            col = f"pillar_{pillar_name.lower().replace(' ', '_')}_score"
+            ps = pillar_scores[pillar_scores["pillar"] == pillar_name][
+                ["country_iso3", "year", "pillar_score"]
+            ].rename(columns={"pillar_score": col})
+            scores = scores.merge(ps, on=["country_iso3", "year"], how="left")
+
     drivers = drivers[
         [
             "country_iso3",
             "year",
             "indicator_code",
             "category",
+            "pillar",
             "label",
             "raw_value",
             "unit",
@@ -210,7 +260,62 @@ def score_panel(panel: pd.DataFrame):
         ]
     ]
 
-    return scores, drivers
+    return scores, drivers, pillar_scores
+
+
+def _compute_pillar_scores(
+    drivers: pd.DataFrame,
+    cfg: dict[str, dict],
+    pillar_w: dict[str, float],
+    group_keys: list[str],
+) -> pd.DataFrame:
+    """Compute a 0-100 score for each pillar independently."""
+    rows = []
+
+    for pillar_name, pillar_total_weight in pillar_w.items():
+        if pillar_total_weight <= 0:
+            continue
+
+        pillar_drivers = drivers[drivers["pillar"] == pillar_name].copy()
+        if pillar_drivers.empty:
+            continue
+
+        # For each country-year, sum weighted contributions within this pillar
+        # and normalize by available weight in this pillar
+        pillar_drivers["_pw"] = pillar_drivers["_weight"].where(
+            pillar_drivers["_available"], 0.0
+        )
+
+        pillar_sum = (
+            pillar_drivers["weighted_contribution"]
+            .where(pillar_drivers["_available"], 0.0)
+            .groupby([pillar_drivers[k] for k in group_keys])
+            .transform("sum")
+        )
+
+        pillar_available = (
+            pillar_drivers["_pw"]
+            .groupby([pillar_drivers[k] for k in group_keys])
+            .transform("sum")
+        )
+
+        pillar_signal = (pillar_sum / pillar_available.replace(0, np.nan)).fillna(0.0)
+        pillar_score = pillar_signal.apply(_score_from_signal)
+
+        tmp = pillar_drivers[group_keys].copy()
+        tmp["pillar"] = pillar_name
+        tmp["pillar_score"] = pillar_score.values
+        tmp["pillar_band"] = tmp["pillar_score"].map(_band)
+        tmp["pillar_weight"] = pillar_total_weight
+
+        rows.append(tmp.drop_duplicates(group_keys))
+
+    if not rows:
+        return pd.DataFrame(
+            columns=["country_iso3", "year", "pillar", "pillar_score", "pillar_band", "pillar_weight"]
+        )
+
+    return pd.concat(rows, ignore_index=True).sort_values(group_keys + ["pillar"])
 
 
 def top_drivers(

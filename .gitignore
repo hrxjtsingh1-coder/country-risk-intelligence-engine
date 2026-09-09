@@ -4,9 +4,34 @@ data/processed/
 # Python cache and local environments
 __pycache__/
 *.py[cod]
+*.pyo
 .venv/
 venv/
 .env
+*.egg-info/
+build/
+dist/
+
+# Testing / linting caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# SQLite databases
+*.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
 
 # Streamlit local state
 .streamlit/secrets.toml

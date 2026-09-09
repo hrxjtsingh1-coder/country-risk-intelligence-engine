@@ -12,9 +12,15 @@ you tweak them without re-running the full pipeline).
 """
 from __future__ import annotations
 
+import html
+import math
+import re
 import sys
+import textwrap
+from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -22,48 +28,17 @@ import streamlit as st
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.append(str(ROOT))
-
 CONFIG_DIR = ROOT / "config"
 PROCESSED_DIR = ROOT / "data" / "processed"
 PANEL_PATH = PROCESSED_DIR / "panel_wide.csv"
 DEMO_PANEL_PATH = ROOT / "data" / "demo" / "panel_wide.csv"
 
-from src.commentary.generate_commentary import generate_report
-from src.scenario.scenario_engine import run_shock_scenario
-from src.scoring.risk_score import score_panel, top_drivers
 from src.analysis.backtest import run_backtest
-
-# Runtime live-data provider (fetches World Bank/FRED at runtime — see
-# src/runtime/live_data.py). Kept separate from the analytical core above:
-# this only decides WHERE the panel comes from, never how it's scored.
+from src.commentary.generate_commentary import generate_report
 from src.runtime import data_state
 from src.runtime.live_data import LiveDataUnavailable, fetch_live_panel
-
-
-# ============================================================================
-# COUNTRY RISK INTELLIGENCE ENGINE
-# Production UI / UX layer
-# ============================================================================
-# IMPORTANT:
-#   - The analytical functions imported above are intentionally preserved.
-#   - score_panel(), top_drivers(), run_shock_scenario(), and generate_report()
-#     remain the source of truth for analytics.
-#   - This file adds presentation, interaction, visualization, accessibility,
-#     responsive layout, export controls, and terminal-style visual polish.
-# ============================================================================
-
-import html
-import math
-import re
-import textwrap
-from datetime import datetime
-
-import numpy as np
-import pandas as pd
-import plotly.graph_objects as go
-import plotly.express as px
-import streamlit as st
+from src.scenario.scenario_engine import run_shock_scenario
+from src.scoring.risk_score import score_panel, top_drivers
 
 
 # Streamlit's Markdown parser treats indented HTML as a code block. The
@@ -1647,7 +1622,7 @@ with st.sidebar:
 # The UI never substitutes a second scoring methodology.
 # ============================================================================
 
-scores, drivers = score_panel(panel)
+scores, drivers, pillar_scores = score_panel(panel)
 
 if "country_iso3" not in scores.columns or "year" not in scores.columns:
     st.error("Scoring output is missing country_iso3/year columns.")

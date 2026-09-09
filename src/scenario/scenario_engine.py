@@ -123,7 +123,7 @@ def run_shock_scenario(
             }
         )
 
-    baseline_scores, _ = score_panel(baseline_panel)
+    baseline_scores, _, _ = score_panel(baseline_panel)
 
     base_row = baseline_scores[
         baseline_scores["country_iso3"].astype(str).eq(str(country_iso3))
@@ -156,7 +156,7 @@ def run_shock_scenario(
                 + float(delta)
             )
 
-    scenario_scores, _ = score_panel(scenario_panel)
+    scenario_scores, _, _ = score_panel(scenario_panel)
 
     scenario_row = scenario_scores[
         scenario_scores["country_iso3"].astype(str).eq(str(country_iso3))

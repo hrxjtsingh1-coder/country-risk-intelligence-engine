@@ -15,12 +15,12 @@ what to render; this module only decides what's true about the data.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import pandas as pd
 
 from src.cleaning.clean import clean_long_panel, to_wide_panel
-from src.indicators.build_panel import build_long_panel_batched
+from src.indicators.build_panel import FetchMetadata, build_long_panel_batched
 from src.runtime.provenance import Provenance, make_provenance
 
 WORLD_BANK_SOURCE = {"name": "World Bank Indicators API", "url": "https://api.worldbank.org/v2"}
@@ -47,6 +47,7 @@ class LiveResult:
     latest_common_year: int
     world_bank_ok: bool
     fred_ok: bool
+    fetch_metadata: FetchMetadata = field(default_factory=FetchMetadata)
 
 
 def select_latest_common_year(
@@ -111,7 +112,7 @@ def fetch_live_panel(
         raise LiveDataUnavailable("No countries are configured (config/countries.yaml is empty).")
 
     try:
-        long_panel = build_long_panel_batched(iso3_codes, start_year, end_year)
+        long_panel, fetch_meta = build_long_panel_batched(iso3_codes, start_year, end_year)
     except Exception as exc:  # noqa: BLE001 - this boundary must never raise past it
         raise LiveDataUnavailable(
             "Official public data could not be retrieved right now.",
@@ -181,4 +182,5 @@ def fetch_live_panel(
         latest_common_year=latest_year,
         world_bank_ok=world_bank_ok,
         fred_ok=fred_ok,
+        fetch_metadata=fetch_meta,
     )

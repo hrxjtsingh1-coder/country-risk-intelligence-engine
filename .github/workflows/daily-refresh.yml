@@ -1,0 +1,67 @@
+name: Daily Data Refresh
+
+on:
+  schedule:
+    # Run daily at 06:00 UTC (World Bank data typically updates overnight)
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      countries:
+        description: "Comma-separated ISO3 codes (leave empty for all)"
+        required: false
+        default: ""
+      start_year:
+        description: "Start year"
+        required: false
+        default: "2012"
+      end_year:
+        description: "End year"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -e .
+
+      - name: Determine end year
+        id: dates
+        run: |
+          if [ -n "${{ github.event.inputs.end_year }}" ]; then
+            echo "end_year=${{ github.event.inputs.end_year }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "end_year=$(date -u +%Y)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run pipeline
+        run: |
+          ARGS="--start ${{ github.event.inputs.start_year || '2012' }} --end ${{ steps.dates.outputs.end_year }} --skip-db"
+          if [ -n "${{ github.event.inputs.countries }}" ]; then
+            ARGS="$ARGS --countries ${{ github.event.inputs.countries }}"
+          fi
+          python -m src.pipeline.run_all $ARGS
+
+      - name: Commit updated data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/processed/panel_wide.csv data/processed/data_metadata.json
+          if git diff --cached --quiet; then
+            echo "No data changes to commit."
+          else
+            TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M UTC")
+            git commit -m "data: daily refresh — $TIMESTAMP"
+            git push
+          fi

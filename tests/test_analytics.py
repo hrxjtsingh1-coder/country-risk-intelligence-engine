@@ -20,7 +20,7 @@ def panel():
 
 
 def test_score_completeness_is_fraction_and_risk_direction():
-    scores, drivers = score_panel(panel())
+    scores, drivers, _ = score_panel(panel())
     assert scores["data_completeness"].eq(1.0).all()
     debt = drivers[drivers.indicator_code.eq("GC.DOD.TOTL.GD.ZS")]
     assert debt.sort_values("raw_value").weighted_contribution.is_monotonic_increasing
@@ -28,7 +28,7 @@ def test_score_completeness_is_fraction_and_risk_direction():
 
 def test_score_missing_data_reduces_completeness():
     data = panel(); data.loc[0, "FP.CPI.TOTL.ZG"] = None
-    scores, _ = score_panel(data)
+    scores, _, _ = score_panel(data)
     assert scores.loc[(scores.country_iso3 == "USA") & (scores.year == 2020), "data_completeness"].iloc[0] < 1
 
 
