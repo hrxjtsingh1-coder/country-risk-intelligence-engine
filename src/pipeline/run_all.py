@@ -12,12 +12,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
-
-ROOT = Path(__file__).resolve().parents[2]
 
 from src.cleaning.clean import coverage_report, to_wide_panel
 from src.commentary.generate_commentary import generate_report
@@ -26,6 +24,8 @@ from src.indicators.build_panel import build_long_panel_batched
 from src.scenario.scenario_engine import run_shock_scenario
 from src.scoring.risk_score import score_panel
 
+ROOT = Path(__file__).resolve().parents[2]
+
 
 def _load_countries_cfg() -> dict:
     with open(ROOT / "config" / "countries.yaml", encoding="utf-8") as f:
@@ -33,9 +33,7 @@ def _load_countries_cfg() -> dict:
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Run the country risk intelligence pipeline end to end."
-    )
+    parser = argparse.ArgumentParser(description="Run the country risk intelligence pipeline end to end.")
     parser.add_argument(
         "--countries",
         type=str,
@@ -63,30 +61,17 @@ def main():
     cfg = _load_countries_cfg()
 
     all_iso3 = [str(c["iso3"]) for c in cfg.get("countries", [])]
-    iso3_codes = (
-        [c.strip().upper() for c in args.countries.split(",") if c.strip()]
-        if args.countries
-        else all_iso3
-    )
+    iso3_codes = [c.strip().upper() for c in args.countries.split(",") if c.strip()] if args.countries else all_iso3
 
-    name_lookup = {
-        str(c["iso3"]): c["name"]
-        for c in cfg.get("countries", [])
-    }
+    name_lookup = {str(c["iso3"]): c["name"] for c in cfg.get("countries", [])}
 
-    print(
-        f"[1/6] Collecting + cleaning indicators for "
-        f"{len(iso3_codes)} countries, {args.start}-{args.end}..."
-    )
+    print(f"[1/6] Collecting + cleaning indicators for {len(iso3_codes)} countries, {args.start}-{args.end}...")
 
-    started_at = datetime.now(timezone.utc)
+    started_at = datetime.now(UTC)
     long_panel, fetch_meta = build_long_panel_batched(iso3_codes, args.start, args.end)
 
     if long_panel.empty:
-        print(
-            "No data returned. Check network access to the World Bank/FRED "
-            "endpoints and retry."
-        )
+        print("No data returned. Check network access to the World Bank/FRED endpoints and retry.")
         sys.exit(1)
 
     indicator_codes = sorted(long_panel["indicator_code"].unique())
@@ -103,19 +88,24 @@ def main():
     out_dir = ROOT / "data" / "processed"
     out_dir.mkdir(parents=True, exist_ok=True)
     wide_panel.to_csv(out_dir / "panel_wide.csv", index=False)
-    configured_codes = [str(item.get("code")) for item in yaml.safe_load((ROOT / "config" / "indicators.yaml").read_text()).get("indicators", [])]
+    configured_codes = [
+        str(item.get("code"))
+        for item in yaml.safe_load((ROOT / "config" / "indicators.yaml").read_text()).get("indicators", [])
+    ]
     metadata = {
         "run_id": started_at.strftime("live-%Y%m%dT%H%M%SZ"),
         "mode": "LIVE",
         "started_at": started_at.isoformat(),
-        "completed_at": datetime.now(timezone.utc).isoformat(),
-        "retrieved_at": datetime.now(timezone.utc).isoformat(),
+        "completed_at": datetime.now(UTC).isoformat(),
+        "retrieved_at": datetime.now(UTC).isoformat(),
         "requested_period": f"{args.start}–{args.end}",
         "latest_available_observation": int(wide_panel["year"].max()),
         "country_count": int(wide_panel["country_iso3"].nunique()),
         "indicator_count": int(len([c for c in configured_codes if c in wide_panel.columns])),
         "observations_received": int(long_panel.shape[0]),
-        "observations_missing": int(max(0, len(iso3_codes) * len(configured_codes) * (args.end - args.start + 1) - long_panel.shape[0])),
+        "observations_missing": int(
+            max(0, len(iso3_codes) * len(configured_codes) * (args.end - args.start + 1) - long_panel.shape[0])
+        ),
         "sources": ["World Bank", "FRED (US-only enrichment)"],
         "source_urls": ["https://api.worldbank.org/v2/", "https://fred.stlouisfed.org/graph/fredgraph.csv"],
         "methodology_version": "1.1.0",
@@ -160,9 +150,7 @@ def main():
     peer_groups = cfg.get("peer_groups", {})
 
     for iso3 in iso3_codes:
-        rows_for_country = wide_panel[
-            wide_panel["country_iso3"].astype(str).eq(iso3)
-        ]
+        rows_for_country = wide_panel[wide_panel["country_iso3"].astype(str).eq(iso3)]
 
         if rows_for_country.empty:
             continue
@@ -199,14 +187,9 @@ def main():
             peer_group=peer_group,
         )
 
-        (
-            commentary_dir / f"{iso3}_{year}.md"
-        ).write_text(report, encoding="utf-8")
+        (commentary_dir / f"{iso3}_{year}.md").write_text(report, encoding="utf-8")
 
-    print(
-        f"[6/6] Done. Panel, DB, and commentary files written "
-        f"under data/processed/."
-    )
+    print("[6/6] Done. Panel, DB, and commentary files written under data/processed/.")
     print("Launch the dashboard with: streamlit run dashboard/app.py")
 
 

@@ -13,8 +13,10 @@ LiveDataUnavailable with a message written for an end user, not a
 developer. This module never imports Streamlit — dashboard/app.py decides
 what to render; this module only decides what's true about the data.
 """
+
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 
 import pandas as pd
@@ -79,9 +81,7 @@ def select_latest_common_year(
             continue
         covered_weight = 0.0
         for code, weight in weighted_indicators:
-            n_with_indicator = year_slice.loc[
-                year_slice["indicator_code"] == code, "country_iso3"
-            ].nunique()
+            n_with_indicator = year_slice.loc[year_slice["indicator_code"] == code, "country_iso3"].nunique()
             covered_weight += weight * (n_with_indicator / max(countries_present, 1))
         if covered_weight / total_weight >= min_coverage:
             return int(year)
@@ -103,6 +103,12 @@ def fetch_live_panel(
     country's score", not "complete"; coverage gaps show up in provenance,
     not as a hard failure. Only genuinely empty/unusable output raises.
     """
+    if os.environ.get("COUNTRY_RISK_OFFLINE", "").strip().lower() in {"1", "true", "yes"}:
+        raise LiveDataUnavailable(
+            "Live data is disabled in this environment (COUNTRY_RISK_OFFLINE).",
+            technical_detail="COUNTRY_RISK_OFFLINE is set; no network request was attempted.",
+        )
+
     records = indicators_cfg.get("indicators", []) if isinstance(indicators_cfg, dict) else []
     if not records:
         raise LiveDataUnavailable("No indicators are configured (config/indicators.yaml is empty).")
@@ -127,14 +133,10 @@ def fetch_live_panel(
 
     long_panel = clean_long_panel(long_panel)
     if long_panel.empty:
-        raise LiveDataUnavailable(
-            "Every observation retrieved failed validation (out-of-range or malformed)."
-        )
+        raise LiveDataUnavailable("Every observation retrieved failed validation (out-of-range or malformed).")
     wide_panel = to_wide_panel(long_panel)
 
-    weighted_indicators = [
-        (r["code"], float(r.get("weight", 0) or 0)) for r in records if r.get("code")
-    ]
+    weighted_indicators = [(r["code"], float(r.get("weight", 0) or 0)) for r in records if r.get("code")]
     latest_year = select_latest_common_year(long_panel, weighted_indicators)
     if latest_year is None:
         raise LiveDataUnavailable("Could not determine a usable analysis year from live data.")

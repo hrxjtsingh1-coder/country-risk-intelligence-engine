@@ -12,9 +12,9 @@ The cleaning layer is deliberately conservative:
 from __future__ import annotations
 
 from pathlib import Path
+
 import pandas as pd
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = ROOT / "config" / "indicators.yaml"
@@ -115,9 +115,7 @@ def clean_long_panel(df: pd.DataFrame) -> pd.DataFrame:
         .reset_index(drop=True)
     )
 
-    return out[
-        ["country_iso3", "indicator_code", "year", "value", "source", "flag"]
-    ]
+    return out[["country_iso3", "indicator_code", "year", "value", "source", "flag"]]
 
 
 def to_wide_panel(df_long: pd.DataFrame) -> pd.DataFrame:
@@ -127,15 +125,12 @@ def to_wide_panel(df_long: pd.DataFrame) -> pd.DataFrame:
     if clean.empty:
         return pd.DataFrame(columns=["country_iso3", "year"])
 
-    wide = (
-        clean.pivot_table(
-            index=["country_iso3", "year"],
-            columns="indicator_code",
-            values="value",
-            aggfunc="last",
-        )
-        .reset_index()
-    )
+    wide = clean.pivot_table(
+        index=["country_iso3", "year"],
+        columns="indicator_code",
+        values="value",
+        aggfunc="last",
+    ).reset_index()
 
     wide.columns.name = None
     return wide.sort_values(["country_iso3", "year"]).reset_index(drop=True)
@@ -156,10 +151,9 @@ def coverage_report(
     for country in countries:
         subset = clean[clean["country_iso3"].eq(str(country).upper())]
         observed = int(
-            subset[
-                subset["indicator_code"].isin(indicators)
-                & subset["year"].isin(years)
-            ][["indicator_code", "year"]].drop_duplicates().shape[0]
+            subset[subset["indicator_code"].isin(indicators) & subset["year"].isin(years)][["indicator_code", "year"]]
+            .drop_duplicates()
+            .shape[0]
         )
 
         rows.append(

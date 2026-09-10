@@ -15,13 +15,15 @@ years within the standard live-fetch window (2012+), so this runs against
 real data automatically once the app is deployed with live World Bank
 data — no separate step required.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import pandas as pd
 
-EPISODES = [
+EPISODES: list[dict[str, Any]] = [
     {
         "iso3": "TUR",
         "label": "Turkiye — 2018 currency crisis",
@@ -96,22 +98,37 @@ def run_backtest(scores: pd.DataFrame, data_is_synthetic: bool) -> list[EpisodeR
     if not isinstance(scores, pd.DataFrame) or scores.empty:
         return [
             EpisodeResult(
-                e["iso3"], e["label"], e["baseline_year"], e["event_year"],
-                None, None, None, "inconclusive", e["note"],
+                e["iso3"],
+                e["label"],
+                e["baseline_year"],
+                e["event_year"],
+                None,
+                None,
+                None,
+                "inconclusive",
+                e["note"],
             )
             for e in EPISODES
         ]
 
     s = scores.copy()
-    s["year"] = pd.to_numeric(s.get("year"), errors="coerce")
-    s["risk_score"] = pd.to_numeric(s.get("risk_score"), errors="coerce")
+    s["year"] = pd.to_numeric(s["year"], errors="coerce")
+    s["risk_score"] = pd.to_numeric(s["risk_score"], errors="coerce")
 
     for ep in EPISODES:
         row_base = s[(s["country_iso3"] == ep["iso3"]) & (s["year"] == ep["baseline_year"])]
         row_event = s[(s["country_iso3"] == ep["iso3"]) & (s["year"] == ep["event_year"])]
 
-        base_score = float(row_base["risk_score"].iloc[0]) if not row_base.empty and pd.notna(row_base["risk_score"].iloc[0]) else None
-        event_score = float(row_event["risk_score"].iloc[0]) if not row_event.empty and pd.notna(row_event["risk_score"].iloc[0]) else None
+        base_score = (
+            float(row_base["risk_score"].iloc[0])
+            if not row_base.empty and pd.notna(row_base["risk_score"].iloc[0])
+            else None
+        )
+        event_score = (
+            float(row_event["risk_score"].iloc[0])
+            if not row_event.empty and pd.notna(row_event["risk_score"].iloc[0])
+            else None
+        )
 
         if base_score is None or event_score is None:
             verdict = "inconclusive"
@@ -122,8 +139,15 @@ def run_backtest(scores: pd.DataFrame, data_is_synthetic: bool) -> list[EpisodeR
 
         results.append(
             EpisodeResult(
-                ep["iso3"], ep["label"], ep["baseline_year"], ep["event_year"],
-                base_score, event_score, delta, verdict, ep["note"],
+                ep["iso3"],
+                ep["label"],
+                ep["baseline_year"],
+                ep["event_year"],
+                base_score,
+                event_score,
+                delta,
+                verdict,
+                ep["note"],
             )
         )
     return results

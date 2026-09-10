@@ -13,6 +13,7 @@ Design:
     - Historical pulls are kept (not cleared on each run) so we can chart
       data freshness over time
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -20,7 +21,7 @@ import json
 import logging
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -66,7 +67,7 @@ def _make_cache_key(source: str, url: str, params: dict | None = None) -> str:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def store_response(
@@ -128,7 +129,7 @@ def get_cached(
     except ValueError:
         return None
 
-    age = (datetime.now(timezone.utc) - cached_time).total_seconds()
+    age = (datetime.now(UTC) - cached_time).total_seconds()
     if age > ttl_seconds:
         LOG.info("Cache entry for %s expired (%.0fs old, TTL=%ds)", source, age, ttl_seconds)
         return None
@@ -174,7 +175,7 @@ def get_last_known_good(
     except ValueError:
         return None
 
-    age = (datetime.now(timezone.utc) - cached_time).total_seconds()
+    age = (datetime.now(UTC) - cached_time).total_seconds()
 
     return CacheResult(
         data=json.loads(body),
@@ -196,9 +197,7 @@ def get_cache_stats(db_path: Path | None = None) -> dict:
         ).fetchall()
         return {
             "total_entries": total,
-            "sources": {
-                s[0]: {"count": s[1], "oldest": s[2], "newest": s[3]} for s in sources
-            },
+            "sources": {s[0]: {"count": s[1], "oldest": s[2], "newest": s[3]} for s in sources},
         }
     finally:
         conn.close()

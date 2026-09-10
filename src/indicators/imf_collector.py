@@ -11,6 +11,7 @@ The IMF uses ISO3 country codes in its API, same as our internal format.
 The collector is fault-tolerant: if the IMF endpoint is unreachable, the
 caller gets an empty DataFrame and falls back to other sources.
 """
+
 from __future__ import annotations
 
 import logging
@@ -56,10 +57,12 @@ def _to_imf_code(iso3: str) -> str:
 
 def _session() -> requests.Session:
     session = requests.Session()
-    session.headers.update({
-        "User-Agent": "country-risk-intelligence-engine/1.0",
-        "Accept": "application/json",
-    })
+    session.headers.update(
+        {
+            "User-Agent": "country-risk-intelligence-engine/1.0",
+            "Accept": "application/json",
+        }
+    )
     return session
 
 
@@ -164,12 +167,10 @@ def _parse_sdmx_json(
         # Build country code lookup from dimension values
         country_values = []
         if country_dim_idx is not None and country_dim_idx < len(series_dim):
-            country_values = [
-                v.get("id", "") for v in series_dim[country_dim_idx].get("values", [])
-            ]
+            country_values = [v.get("id", "") for v in series_dim[country_dim_idx].get("values", [])]
 
         # Build year lookup from observation dimension
-        year_values = []
+        year_values: list[int | None] = []
         for dim in obs_dim:
             for val in dim.get("values", []):
                 # IMF periods can be "2023", "2023-Q1", "2023-Q2", etc.
@@ -207,8 +208,8 @@ def _parse_sdmx_json(
 
                 if period_idx >= len(year_values):
                     continue
-                year = year_values[period_idx]
-                if year is None:
+                year_val: int | None = year_values[period_idx]
+                if year_val is None:
                     continue
 
                 # obs_value is [value, status_code, ...]
@@ -216,13 +217,15 @@ def _parse_sdmx_json(
                 if value is None:
                     continue
 
-                rows.append({
-                    "country_iso3": iso3,
-                    "year": year,
-                    "value": float(value),
-                    "source": source_label,
-                    "flag": "ok",
-                })
+                rows.append(
+                    {
+                        "country_iso3": iso3,
+                        "year": year_val,
+                        "value": float(value),
+                        "source": source_label,
+                        "flag": "ok",
+                    }
+                )
 
     except (KeyError, IndexError, TypeError) as exc:
         LOG.warning("Failed to parse IMF SDMX response for %s: %s", indicator_code, exc)

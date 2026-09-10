@@ -11,6 +11,7 @@ The goal isn't eloquence, it's traceability: a reader should be able to look
 at any sentence here and find the exact number it came from in scores/drivers/
 scenario_result.
 """
+
 from __future__ import annotations
 
 import pandas as pd
@@ -31,8 +32,11 @@ DIRECTION_PHRASE = {
 
 
 def _driver_phrase(row: pd.Series) -> str:
-    worse_phrase, better_phrase = DIRECTION_PHRASE.get(row["indicator_code"], (row["label"], row["label"]))
-    return worse_phrase if row["weighted_contribution"] > 0 else better_phrase
+    key = str(row.get("indicator_code", ""))
+    label = str(row.get("label", ""))
+    worse_phrase, better_phrase = DIRECTION_PHRASE.get(key, (label, label))
+    contrib = float(row["weighted_contribution"])
+    return worse_phrase if contrib > 0 else better_phrase
 
 
 def _trend_phrase(scores: pd.DataFrame, country_iso3: str, year: int) -> str | None:
@@ -126,7 +130,9 @@ def generate_report(
 
 
 def _format_shock(sc: dict) -> str:
-    driver_label = {"POLICY_RATE_YOY_CHANGE_BPS": "the US annual-average federal-funds-rate change increases by"}.get(sc["driver_code"], f"{sc['driver_code']} moves by")
+    driver_label = {"POLICY_RATE_YOY_CHANGE_BPS": "the US annual-average federal-funds-rate change increases by"}.get(
+        sc["driver_code"], f"{sc['driver_code']} moves by"
+    )
     unit = "bps" if sc["driver_code"] == "POLICY_RATE_YOY_CHANGE_BPS" else ""
     return f"If {driver_label} {sc['shock_amount']:+.0f}{unit} from current levels..."
 
@@ -168,7 +174,9 @@ def _analyst_view(
         sentences.append(f"The single largest swing factor this period is {lead_driver}.")
     if scenario_result:
         driver_name = scenario_result["driver_code"].replace("_", " ").lower()
-        sentences.append(f"The Scenario section above stress-tests sensitivity to {driver_name} specifically — it is one lever among several, not necessarily the top driver above.")
+        sentences.append(
+            f"The Scenario section above stress-tests sensitivity to {driver_name} specifically — it is one lever among several, not necessarily the top driver above."
+        )
     sentences.append(
         "This score is a relative-positioning signal within the panel, not a standalone forecast or a credit rating — "
         "treat it as a prioritization tool for where to look closer, not a substitute for that closer look."

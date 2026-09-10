@@ -6,6 +6,7 @@ Kept as a tiny, dependency-free module — no Streamlit, no requests — so
 anything can check "is this LIVE or DEMO" without importing the runtime
 fetch machinery.
 """
+
 from __future__ import annotations
 
 LOADING = "LOADING"

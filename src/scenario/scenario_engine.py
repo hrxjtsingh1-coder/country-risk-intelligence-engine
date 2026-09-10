@@ -71,9 +71,7 @@ def run_shock_scenario(
         raise ValueError("Panel is empty.")
 
     if driver_code not in panel.columns:
-        raise ValueError(
-            f"Scenario driver {driver_code} is not present in the panel."
-        )
+        raise ValueError(f"Scenario driver {driver_code} is not present in the panel.")
 
     selected = panel[
         panel["country_iso3"].astype(str).eq(str(country_iso3))
@@ -109,17 +107,14 @@ def run_shock_scenario(
         target_deltas.append(
             {
                 "indicator_code": target,
-                "baseline_value": (
-                    float(baseline_value)
-                    if not pd.isna(baseline_value)
-                    else float("nan")
-                ),
+                "baseline_value": (float(baseline_value) if not pd.isna(baseline_value) else float("nan")),
                 "estimated_delta": estimated_delta,
                 "r_squared": r2,
                 "n_obs": n_obs,
                 "observed_driver_min": observed_min,
                 "observed_driver_max": observed_max,
-                "shocked_driver_value": float(pd.to_numeric(selected.iloc[0][driver_code], errors="coerce")) + float(shock_amount),
+                "shocked_driver_value": float(pd.to_numeric(selected.iloc[0][driver_code], errors="coerce"))
+                + float(shock_amount),
             }
         )
 
@@ -139,22 +134,22 @@ def run_shock_scenario(
     scenario_panel = baseline_panel.copy()
 
     for target_delta in target_deltas:
-        code = target_delta["indicator_code"]
-        delta = target_delta["estimated_delta"]
-
-        if pd.isna(delta):
+        code = str(target_delta.get("indicator_code", ""))
+        raw_delta = target_delta.get("estimated_delta")
+        if not code or raw_delta is None:
             continue
+        if not isinstance(raw_delta, (int, float, np.number)):
+            continue
+        if not np.isfinite(float(raw_delta)):
+            continue
+        delta = float(raw_delta)
 
-        mask = (
-            scenario_panel["country_iso3"].astype(str).eq(str(country_iso3))
-            & pd.to_numeric(scenario_panel["year"], errors="coerce").eq(int(year))
-        )
+        mask = scenario_panel["country_iso3"].astype(str).eq(str(country_iso3)) & pd.to_numeric(
+            scenario_panel["year"], errors="coerce"
+        ).eq(int(year))
 
         if code in scenario_panel.columns:
-            scenario_panel.loc[mask, code] = (
-                pd.to_numeric(scenario_panel.loc[mask, code], errors="coerce")
-                + float(delta)
-            )
+            scenario_panel.loc[mask, code] = pd.to_numeric(scenario_panel.loc[mask, code], errors="coerce") + delta
 
     scenario_scores, _, _ = score_panel(scenario_panel)
 
@@ -163,11 +158,7 @@ def run_shock_scenario(
         & pd.to_numeric(scenario_scores["year"], errors="coerce").eq(int(year))
     ]
 
-    scenario_score = (
-        float(scenario_row.iloc[0]["risk_score"])
-        if not scenario_row.empty
-        else float("nan")
-    )
+    scenario_score = float(scenario_row.iloc[0]["risk_score"]) if not scenario_row.empty else float("nan")
 
     def band(score):
         if np.isnan(score):
@@ -186,8 +177,12 @@ def run_shock_scenario(
 
     baseline_driver = float(pd.to_numeric(selected.iloc[0][driver_code], errors="coerce"))
     shocked_driver = baseline_driver + float(shock_amount)
-    observed_driver = pd.to_numeric(baseline_panel[driver_code], errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
-    out_of_sample = bool(not observed_driver.empty and (shocked_driver < observed_driver.min() or shocked_driver > observed_driver.max()))
+    observed_driver = (
+        pd.to_numeric(baseline_panel[driver_code], errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
+    )
+    out_of_sample = bool(
+        not observed_driver.empty and (shocked_driver < observed_driver.min() or shocked_driver > observed_driver.max())
+    )
     return {
         "driver_code": driver_code,
         "shock_amount": float(shock_amount),

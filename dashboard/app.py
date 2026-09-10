@@ -10,28 +10,20 @@ are recomputed on the fly from that panel (cheap, and guarantees the
 dashboard always matches the current config/indicators.yaml weights even if
 you tweak them without re-running the full pipeline).
 """
+
 from __future__ import annotations
 
 import html
-import math
 import re
-import sys
 import textwrap
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 import yaml
-
-ROOT = Path(__file__).resolve().parents[1]
-CONFIG_DIR = ROOT / "config"
-PROCESSED_DIR = ROOT / "data" / "processed"
-PANEL_PATH = PROCESSED_DIR / "panel_wide.csv"
-DEMO_PANEL_PATH = ROOT / "data" / "demo" / "panel_wide.csv"
 
 from src.analysis.backtest import run_backtest
 from src.commentary.generate_commentary import generate_report
@@ -39,6 +31,12 @@ from src.runtime import data_state
 from src.runtime.live_data import LiveDataUnavailable, fetch_live_panel
 from src.scenario.scenario_engine import run_shock_scenario
 from src.scoring.risk_score import score_panel, top_drivers
+
+ROOT = Path(__file__).resolve().parents[1]
+CONFIG_DIR = ROOT / "config"
+PROCESSED_DIR = ROOT / "data" / "processed"
+PANEL_PATH = PROCESSED_DIR / "panel_wide.csv"
+DEMO_PANEL_PATH = ROOT / "data" / "demo" / "panel_wide.csv"
 
 
 # Streamlit's Markdown parser treats indented HTML as a code block. The
@@ -1129,14 +1127,11 @@ st.markdown(
 # DATA / CONFIGURATION LOADING
 # ============================================================================
 
+
 @st.cache_data(show_spinner=False)
 def load_configurations():
-    countries = yaml.safe_load(
-        (CONFIG_DIR / "countries.yaml").read_text(encoding="utf-8")
-    )
-    indicators = yaml.safe_load(
-        (CONFIG_DIR / "indicators.yaml").read_text(encoding="utf-8")
-    )
+    countries = yaml.safe_load((CONFIG_DIR / "countries.yaml").read_text(encoding="utf-8"))
+    indicators = yaml.safe_load((CONFIG_DIR / "indicators.yaml").read_text(encoding="utf-8"))
     return countries, indicators
 
 
@@ -1146,11 +1141,7 @@ def load_panel(panel_path: Path):
 
 
 countries_cfg, indicators_cfg = load_configurations()
-peer_groups = (
-    countries_cfg.get("peer_groups", {})
-    if isinstance(countries_cfg, dict)
-    else {}
-)
+peer_groups = countries_cfg.get("peer_groups", {}) if isinstance(countries_cfg, dict) else {}
 
 # ============================================================================
 # LIVE / DEMO DATA STATE MACHINE
@@ -1161,9 +1152,11 @@ peer_groups = (
 # Dataset); it never silently substitutes synthetic data for real data.
 # ============================================================================
 
-COUNTRY_ISO3_LIST = tuple(
-    c["iso3"] for c in countries_cfg.get("countries", []) if c.get("iso3")
-) if isinstance(countries_cfg, dict) else tuple()
+COUNTRY_ISO3_LIST = (
+    tuple(c["iso3"] for c in countries_cfg.get("countries", []) if c.get("iso3"))
+    if isinstance(countries_cfg, dict)
+    else tuple()
+)
 
 LIVE_START_YEAR = 2012
 LIVE_END_YEAR = datetime.now().year
@@ -1193,9 +1186,7 @@ live_error = None
 if st.session_state.data_mode != data_state.DEMO:
     try:
         with st.spinner("Connecting to World Bank..."):
-            live_result = _cached_fetch_live(
-                COUNTRY_ISO3_LIST, LIVE_START_YEAR, LIVE_END_YEAR, _config_version()
-            )
+            live_result = _cached_fetch_live(COUNTRY_ISO3_LIST, LIVE_START_YEAR, LIVE_END_YEAR, _config_version())
         st.session_state.data_mode = data_state.LIVE
     except LiveDataUnavailable as exc:
         live_error = exc
@@ -1203,7 +1194,7 @@ if st.session_state.data_mode != data_state.DEMO:
 
 if st.session_state.data_mode == data_state.UNAVAILABLE:
     st.markdown(
-        f"""
+        """
         <div class="card" style="margin-top:24px;">
             <div class="card-label">LIVE DATA UNAVAILABLE</div>
             <div class="card-value" style="font-size:22px;">
@@ -1247,6 +1238,7 @@ else:
 # ============================================================================
 # UTILITY HELPERS
 # ============================================================================
+
 
 def safe_float(value, default=0.0):
     try:
@@ -1356,11 +1348,7 @@ def country_records():
 
 
 def country_lookup():
-    return {
-        str(record.get("iso3")): record
-        for record in country_records()
-        if record.get("iso3")
-    }
+    return {str(record.get("iso3")): record for record in country_records() if record.get("iso3")}
 
 
 def get_iso(country):
@@ -1518,7 +1506,7 @@ with st.sidebar:
     st.markdown(
         f"""
         <div style="padding:4px 4px 16px;">
-            <div class="kicker">RISK ENGINE / {('DEMO PANEL' if USING_DEMO_DATA else 'LIVE PANEL')}</div>
+            <div class="kicker">RISK ENGINE / {("DEMO PANEL" if USING_DEMO_DATA else "LIVE PANEL")}</div>
             <div style="font-family:'Space Grotesk';font-size:21px;font-weight:700;">
                 Control Room
             </div>
@@ -1629,15 +1617,11 @@ if "country_iso3" not in scores.columns or "year" not in scores.columns:
     st.stop()
 
 row = scores[
-    scores["country_iso3"].astype(str).eq(str(country))
-    & pd.to_numeric(scores["year"], errors="coerce").eq(int(year))
+    scores["country_iso3"].astype(str).eq(str(country)) & pd.to_numeric(scores["year"], errors="coerce").eq(int(year))
 ]
 
 if row.empty or pd.isna(row.iloc[0]["risk_score"]):
-    st.error(
-        f"No sufficient indicator data to score "
-        f"{get_country_label(country)} in {year}."
-    )
+    st.error(f"No sufficient indicator data to score {get_country_label(country)} in {year}.")
     st.stop()
 
 score_value = safe_float(row.iloc[0]["risk_score"])
@@ -1835,7 +1819,7 @@ with k1:
             <div class="kpi-accent"></div>
             <div class="card-label">Composite risk</div>
             <div class="card-value" style="color:{score_color};">
-                {fmt_number(score_value,1)}
+                {fmt_number(score_value, 1)}
             </div>
             <div class="card-caption">{esc(band)} risk band · 0–100</div>
         </div>
@@ -1844,7 +1828,7 @@ with k1:
     )
 
 with k2:
-    coverage_text = "—" if pd.isna(coverage_value) else f"{fmt_number(coverage_value,1)}%"
+    coverage_text = "—" if pd.isna(coverage_value) else f"{fmt_number(coverage_value, 1)}%"
     st.markdown(
         f"""
         <div class="card kpi">
@@ -1889,7 +1873,7 @@ with k3:
             <div class="card-label">YoY movement</div>
             <div class="card-value {movement_class}">{movement_text}</div>
             <div class="card-caption">
-                versus {int(year)-1} composite score
+                versus {int(year) - 1} composite score
             </div>
         </div>
         """,
@@ -1902,9 +1886,7 @@ with k4:
 
     if score_column and isinstance(scores, pd.DataFrame) and "year" in scores.columns:
         try:
-            same_year = scores[
-                pd.to_numeric(scores["year"], errors="coerce").eq(int(year))
-            ][score_column].dropna()
+            same_year = scores[pd.to_numeric(scores["year"], errors="coerce").eq(int(year))][score_column].dropna()
             if not same_year.empty:
                 rank = int((same_year > score_value).sum()) + 1
                 panel_position = f"#{rank} / {len(same_year)}"
@@ -1941,21 +1923,23 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-_slice = drivers[
-    (drivers["country_iso3"].astype(str) == str(country))
-    & (pd.to_numeric(drivers["year"], errors="coerce") == int(year))
-].copy() if isinstance(drivers, pd.DataFrame) and not drivers.empty else pd.DataFrame()
+_slice = (
+    drivers[
+        (drivers["country_iso3"].astype(str) == str(country))
+        & (pd.to_numeric(drivers["year"], errors="coerce") == int(year))
+    ].copy()
+    if isinstance(drivers, pd.DataFrame) and not drivers.empty
+    else pd.DataFrame()
+)
 
 if not _slice.empty and "weighted_contribution" in _slice.columns:
     _slice = _slice.dropna(subset=["weighted_contribution"])
-    _higher = _slice[_slice["weighted_contribution"] > 0].sort_values(
-        "weighted_contribution", ascending=False
-    )
-    _lower = _slice[_slice["weighted_contribution"] < 0].sort_values(
-        "weighted_contribution", ascending=True
-    )
-    _label_col = "label" if "label" in _slice.columns else (
-        "indicator_code" if "indicator_code" in _slice.columns else _slice.columns[0]
+    _higher = _slice[_slice["weighted_contribution"] > 0].sort_values("weighted_contribution", ascending=False)
+    _lower = _slice[_slice["weighted_contribution"] < 0].sort_values("weighted_contribution", ascending=True)
+    _label_col = (
+        "label"
+        if "label" in _slice.columns
+        else ("indicator_code" if "indicator_code" in _slice.columns else _slice.columns[0])
     )
 
     _up_names = [str(r[_label_col]) for _, r in _higher.head(3).iterrows()]
@@ -1967,7 +1951,10 @@ if not _slice.empty and "weighted_contribution" in _slice.columns:
         f"**{esc(_country_label)}** is currently positioned in the **{esc(band.lower())}** "
         f"relative-risk band within the selected comparison panel."
     )
-    st.markdown(f'<div class="card"><div class="card-value" style="font-size:16px;font-weight:500;line-height:1.5;">{_sentence}</div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="card"><div class="card-value" style="font-size:16px;font-weight:500;line-height:1.5;">{_sentence}</div>',
+        unsafe_allow_html=True,
+    )
 
     if _up_names:
         st.markdown(
@@ -2010,7 +1997,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-left, right = st.columns([.85, 1.55], gap="large")
+left, right = st.columns([0.85, 1.55], gap="large")
 
 with left:
     st.markdown(
@@ -2021,7 +2008,7 @@ with left:
                 <div class="score-ring"
                      style="--score-pct-target:{score_pct(score_value)};--score-color:{score_color};">
                     <div class="score-inner">
-                        <div class="score-number">{fmt_number(score_value,0)}</div>
+                        <div class="score-number">{fmt_number(score_value, 0)}</div>
                         <div class="score-band">{esc(band.upper())}</div>
                     </div>
                 </div>
@@ -2045,21 +2032,13 @@ with right:
         country_column = find_country_column(scores)
 
         if score_column and country_column and "year" in scores.columns:
-            history = scores[
-                scores[country_column].astype(str).eq(str(country))
-            ].copy()
+            history = scores[scores[country_column].astype(str).eq(str(country))].copy()
 
             if history.empty and country_column in ["iso3", "ISO3"]:
-                history = scores[
-                    scores[country_column].astype(str).eq(str(iso))
-                ].copy()
+                history = scores[scores[country_column].astype(str).eq(str(iso))].copy()
 
-            history["year"] = pd.to_numeric(
-                history["year"], errors="coerce"
-            )
-            history[score_column] = pd.to_numeric(
-                history[score_column], errors="coerce"
-            )
+            history["year"] = pd.to_numeric(history["year"], errors="coerce")
+            history[score_column] = pd.to_numeric(history[score_column], errors="coerce")
             history = history.dropna(subset=["year", score_column]).sort_values("year")
 
             if not history.empty:
@@ -2124,8 +2103,14 @@ with right:
                 "doubleClick": False,
                 "showAxisDragHandles": False,
                 "modeBarButtonsToRemove": [
-                    "zoom2d", "pan2d", "select2d", "lasso2d",
-                    "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d",
+                    "zoom2d",
+                    "pan2d",
+                    "select2d",
+                    "lasso2d",
+                    "zoomIn2d",
+                    "zoomOut2d",
+                    "autoScale2d",
+                    "resetScale2d",
                 ],
             },
         )
@@ -2152,10 +2137,14 @@ st.markdown(
 
 driver_left, driver_right = st.columns([1, 1], gap="large")
 
-_full_slice = drivers[
-    (drivers["country_iso3"].astype(str) == str(country))
-    & (pd.to_numeric(drivers["year"], errors="coerce") == int(year))
-].copy() if isinstance(drivers, pd.DataFrame) and not drivers.empty else pd.DataFrame()
+_full_slice = (
+    drivers[
+        (drivers["country_iso3"].astype(str) == str(country))
+        & (pd.to_numeric(drivers["year"], errors="coerce") == int(year))
+    ].copy()
+    if isinstance(drivers, pd.DataFrame) and not drivers.empty
+    else pd.DataFrame()
+)
 
 if not _full_slice.empty and "weighted_contribution" in _full_slice.columns:
     _full_slice = _full_slice.dropna(subset=["weighted_contribution"])
@@ -2197,17 +2186,20 @@ if not _full_slice.empty and "weighted_contribution" in _full_slice.columns:
     _lower_full = _full_slice[_full_slice["weighted_contribution"] < 0].sort_values(
         "weighted_contribution", ascending=True
     )
-    _magnitude_ref = max(
-        _full_slice["weighted_contribution"].abs().max() * 100, 1e-9
-    )
+    _magnitude_ref = max(_full_slice["weighted_contribution"].abs().max() * 100, 1e-9)
 else:
     _higher_full = pd.DataFrame()
     _lower_full = pd.DataFrame()
 
 with driver_left:
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<div class="card-label" style="color:var(--red,#ff6b7a);">↑ HIGHER-RISK SIGNALS</div>', unsafe_allow_html=True)
-    st.markdown('<div class="card-caption" style="margin-bottom:10px;">Pushing the score up, largest first.</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="card-label" style="color:var(--red,#ff6b7a);">↑ HIGHER-RISK SIGNALS</div>', unsafe_allow_html=True
+    )
+    st.markdown(
+        '<div class="card-caption" style="margin-bottom:10px;">Pushing the score up, largest first.</div>',
+        unsafe_allow_html=True,
+    )
     if not _higher_full.empty:
         st.markdown('<div class="driver-list">', unsafe_allow_html=True)
         _render_signal_group(_higher_full.head(6), "↑", "+")
@@ -2218,8 +2210,13 @@ with driver_left:
 
 with driver_right:
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<div class="card-label" style="color:var(--green,#54d69a);">↓ MITIGATING SIGNALS</div>', unsafe_allow_html=True)
-    st.markdown('<div class="card-caption" style="margin-bottom:10px;">Pulling the score down, largest first.</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="card-label" style="color:var(--green,#54d69a);">↓ MITIGATING SIGNALS</div>', unsafe_allow_html=True
+    )
+    st.markdown(
+        '<div class="card-caption" style="margin-bottom:10px;">Pulling the score down, largest first.</div>',
+        unsafe_allow_html=True,
+    )
     if not _lower_full.empty:
         st.markdown('<div class="driver-list">', unsafe_allow_html=True)
         _render_signal_group(_lower_full.head(6), "↓", "-")
@@ -2230,7 +2227,21 @@ with driver_right:
 
 with st.expander("Technical details — indicator codes, weights, sources"):
     if not _full_slice.empty:
-        _tech_cols = [c for c in ["indicator_code", _label_col, "category", "raw_value", "unit", "weight", "risk_direction", "z_risk", "weighted_contribution"] if c in _full_slice.columns]
+        _tech_cols = [
+            c
+            for c in [
+                "indicator_code",
+                _label_col,
+                "category",
+                "raw_value",
+                "unit",
+                "weight",
+                "risk_direction",
+                "z_risk",
+                "weighted_contribution",
+            ]
+            if c in _full_slice.columns
+        ]
         st.dataframe(_full_slice[_tech_cols].reset_index(drop=True), width="stretch", hide_index=True)
     else:
         st.caption("No driver data available for this technical view.")
@@ -2255,7 +2266,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-peer_left, peer_right = st.columns([1.45, .75], gap="large")
+peer_left, peer_right = st.columns([1.45, 0.75], gap="large")
 
 with peer_left:
     peer_fig = go.Figure()
@@ -2265,9 +2276,7 @@ with peer_left:
         country_column = find_country_column(scores)
 
         if score_column and country_column and "year" in scores.columns:
-            peers = scores[
-                pd.to_numeric(scores["year"], errors="coerce").eq(int(year))
-            ].copy()
+            peers = scores[pd.to_numeric(scores["year"], errors="coerce").eq(int(year))].copy()
 
             peers[score_column] = pd.to_numeric(
                 peers[score_column],
@@ -2280,8 +2289,7 @@ with peer_left:
                 peers["label"] = peers[country_column].astype(str)
 
                 marker_colors = [
-                    score_color if str(x) == str(country) else "rgba(110,168,255,.55)"
-                    for x in peers["label"]
+                    score_color if str(x) == str(country) else "rgba(110,168,255,.55)" for x in peers["label"]
                 ]
 
                 peer_fig.add_trace(
@@ -2333,8 +2341,14 @@ with peer_left:
                 "doubleClick": False,
                 "showAxisDragHandles": False,
                 "modeBarButtonsToRemove": [
-                    "zoom2d", "pan2d", "select2d", "lasso2d",
-                    "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d",
+                    "zoom2d",
+                    "pan2d",
+                    "select2d",
+                    "lasso2d",
+                    "zoomIn2d",
+                    "zoomOut2d",
+                    "autoScale2d",
+                    "resetScale2d",
                 ],
             },
         )
@@ -2351,9 +2365,7 @@ with peer_right:
         country_column = find_country_column(scores)
 
         if score_column and country_column and "year" in scores.columns:
-            peers = scores[
-                pd.to_numeric(scores["year"], errors="coerce").eq(int(year))
-            ].copy()
+            peers = scores[pd.to_numeric(scores["year"], errors="coerce").eq(int(year))].copy()
             peers[score_column] = pd.to_numeric(peers[score_column], errors="coerce")
             peers = peers.dropna(subset=[score_column]).sort_values(
                 score_column,
@@ -2369,11 +2381,11 @@ with peer_right:
                     <div class="peer-position-row">
                         <div>
                             <div class="micro">SELECTED</div>
-                            <div class="peer-position-value">{fmt_number(score_value,1)}</div>
+                            <div class="peer-position-value">{fmt_number(score_value, 1)}</div>
                         </div>
                         <div>
                             <div class="micro">PEER MEDIAN</div>
-                            <div class="peer-position-value">{fmt_number(_median,1)}</div>
+                            <div class="peer-position-value">{fmt_number(_median, 1)}</div>
                         </div>
                         <div>
                             <div class="micro">POSITION</div>
@@ -2397,7 +2409,7 @@ with peer_right:
                     f"""
                     <div class="peer-highlight">
                         <div class="peer-country">{esc(peer_name)}</div>
-                        <div class="peer-score">{fmt_number(peer_score,1)}</div>
+                        <div class="peer-score">{fmt_number(peer_score, 1)}</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
@@ -2529,7 +2541,7 @@ if len(_watch_years) >= 2:
         for iso3, b_prior, b_latest in _band_alerts:
             st.markdown(
                 f'<div class="card-caption">• {esc(get_country_label(iso3))}: '
-                f'{esc(str(b_prior))} &rarr; <strong>{esc(str(b_latest))}</strong></div>',
+                f"{esc(str(b_prior))} &rarr; <strong>{esc(str(b_latest))}</strong></div>",
                 unsafe_allow_html=True,
             )
         st.markdown("</div>", unsafe_allow_html=True)
@@ -2663,11 +2675,11 @@ st.markdown(
         </div>
         <div class="scenario-title">
             Policy-rate sensitivity
-            <span style="color:{COLORS['violet']};"> {fmt_delta(shock,0)} bps</span>
+            <span style="color:{COLORS["violet"]};"> {fmt_delta(shock, 0)} bps</span>
         </div>
         <div class="card-caption" style="margin-top:7px;">
             Driver: POLICY_RATE_YOY_CHANGE_BPS · Baseline: {esc(country_label)}
-            · {int(year)} · score {fmt_number(score_value,1)}
+            · {int(year)} · score {fmt_number(score_value, 1)}
         </div>
     </div>
     """,
@@ -2736,7 +2748,7 @@ if scenario is not None:
             f"""
             <div class="card">
                 <div class="card-label">BASELINE</div>
-                <div class="card-value">{fmt_number(scenario_baseline,1)}</div>
+                <div class="card-value">{fmt_number(scenario_baseline, 1)}</div>
                 <div class="card-caption">existing risk score</div>
             </div>
             """,
@@ -2750,7 +2762,7 @@ if scenario is not None:
             <div class="card">
                 <div class="card-label">SCENARIO SCORE</div>
                 <div class="card-value" style="color:{band_color(scenario_band)};">
-                    {fmt_number(scenario_value,1)}
+                    {fmt_number(scenario_value, 1)}
                 </div>
                 <div class="card-caption">{esc(scenario_band)} band after shock</div>
             </div>
@@ -2760,11 +2772,7 @@ if scenario is not None:
 
     with sc3:
         delta_class = (
-            "delta-positive"
-            if scenario_delta > 0
-            else "delta-negative"
-            if scenario_delta < 0
-            else "delta-neutral"
+            "delta-positive" if scenario_delta > 0 else "delta-negative" if scenario_delta < 0 else "delta-neutral"
         )
 
         st.markdown(
@@ -2772,7 +2780,7 @@ if scenario is not None:
             <div class="card">
                 <div class="card-label">RISK DELTA</div>
                 <div class="card-value {delta_class}">
-                    {fmt_delta(scenario_delta,1)}
+                    {fmt_delta(scenario_delta, 1)}
                 </div>
                 <div class="card-caption">scenario minus baseline</div>
             </div>
@@ -2821,11 +2829,11 @@ if scenario is not None:
                     <div class="card-label">{esc(code)}</div>
                     <div style="margin-top:12px;color:#7e8a9b;font-size:10px;">BASELINE</div>
                     <div style="font-family:'DM Mono';font-size:15px;color:#e8eef6;">
-                        {esc(fmt_number(baseline_target,2) if baseline_target is not None else "—")}
+                        {esc(fmt_number(baseline_target, 2) if baseline_target is not None else "—")}
                     </div>
                     <div style="margin-top:9px;color:#7e8a9b;font-size:10px;">SCENARIO</div>
-                    <div style="font-family:'DM Mono';font-size:15px;color:{COLORS['violet']};">
-                        {esc(fmt_number(scenario_target,2) if scenario_target is not None else "engine output")}
+                    <div style="font-family:'DM Mono';font-size:15px;color:{COLORS["violet"]};">
+                        {esc(fmt_number(scenario_target, 2) if scenario_target is not None else "engine output")}
                     </div>
                 </div>
                 """,
@@ -2849,9 +2857,7 @@ if scenario is not None:
         unsafe_allow_html=True,
     )
 else:
-    empty_state(
-        "Set a non-zero policy-rate shock to explore the scenario engine output."
-    )
+    empty_state("Set a non-zero policy-rate shock to explore the scenario engine output.")
 
 
 # ============================================================================
@@ -2995,10 +3001,7 @@ meta_html = '<div class="card"><div class="metadata">'
 
 for key, value in metadata:
     meta_html += (
-        f'<div class="meta-item">'
-        f'<div class="meta-k">{esc(key)}</div>'
-        f'<div class="meta-v">{esc(value)}</div>'
-        f"</div>"
+        f'<div class="meta-item"><div class="meta-k">{esc(key)}</div><div class="meta-v">{esc(value)}</div></div>'
     )
 
 meta_html += "</div></div>"
@@ -3020,7 +3023,9 @@ with st.expander("Source traceability — every indicator, its source, and its w
                 }.get(_ind.get("source", ""), _ind.get("source", "")),
                 "Unit": _ind.get("unit", ""),
                 "Weight": _ind.get("weight", ""),
-                "Direction": "Higher = worse" if _ind.get("risk_direction", 1) in (1, "1", "higher_is_worse") else "Higher = better",
+                "Direction": "Higher = worse"
+                if _ind.get("risk_direction", 1) in (1, "1", "higher_is_worse")
+                else "Higher = better",
             }
         )
     if _src_rows:
@@ -3065,9 +3070,7 @@ with export_left:
         width="stretch",
     )
 
-    st.caption(
-        "Exports the currently loaded dashboard panel exactly as provided to the UI."
-    )
+    st.caption("Exports the currently loaded dashboard panel exactly as provided to the UI.")
 
 with export_right:
     with st.expander("Inspect selected country-year row"):

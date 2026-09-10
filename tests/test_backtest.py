@@ -1,6 +1,6 @@
 import pandas as pd
 
-from src.analysis.backtest import run_backtest, EPISODES, PASS_THRESHOLD_POINTS
+from src.analysis.backtest import EPISODES, PASS_THRESHOLD_POINTS, run_backtest
 
 
 def test_backtest_all_inconclusive_on_empty_scores():

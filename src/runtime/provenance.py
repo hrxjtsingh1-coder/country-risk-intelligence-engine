@@ -6,11 +6,12 @@ answer "where did this number come from?" from the app itself — source,
 retrieval time, latest underlying observation, and coverage — without
 opening the source code (PHASE 13).
 """
+
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
 import uuid
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
 
 
 @dataclass
@@ -37,7 +38,7 @@ def new_run_id() -> str:
 
 
 def now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%d %b %Y, %H:%M UTC")
+    return datetime.now(UTC).strftime("%d %b %Y, %H:%M UTC")
 
 
 def make_provenance(
@@ -52,11 +53,7 @@ def make_provenance(
     validation_failures: list[str] | None = None,
     config_version: str = "unversioned",
 ) -> Provenance:
-    coverage = (
-        round(100 * received_observations / expected_observations, 1)
-        if expected_observations
-        else 0.0
-    )
+    coverage = round(100 * received_observations / expected_observations, 1) if expected_observations else 0.0
     return Provenance(
         run_id=new_run_id(),
         retrieved_at=now_iso(),

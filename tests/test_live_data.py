@@ -6,6 +6,7 @@ for unit tests — everything here mocks requests or the fetch boundary
 directly. tests/fixtures/worldbank_success.json provides a realistic
 response shape for the HTTP-parsing test.
 """
+
 import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch

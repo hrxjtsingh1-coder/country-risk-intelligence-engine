@@ -22,11 +22,11 @@ from __future__ import annotations
 import io
 import json
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable
+from typing import Any
 
-import numpy as np
 import pandas as pd
 import requests
 import yaml
@@ -92,7 +92,7 @@ def _world_bank_indicator(
     end: int,
 ) -> pd.DataFrame:
     url = WB_URL.format(country=iso3, indicator=wb_code)
-    params = {
+    params: dict[str, str | int] = {
         "format": "json",
         "per_page": 1000,
         "date": f"{start}:{end}",
@@ -157,11 +157,9 @@ def _fred_annual_mean(
     data["year"] = data[date_col].dt.year.astype(int)
     data = data[data["year"].between(start, end)]
 
-    annual = data.groupby("year", as_index=False)[value_col].mean()
+    annual = data.groupby("year", as_index=False)[[value_col]].mean()
 
-    return annual.rename(columns={value_col: "value"})[
-        ["year", "value"]
-    ]
+    return annual.rename(columns={value_col: "value"})[["year", "value"]]
 
 
 def _build_fx_depreciation(
@@ -191,9 +189,7 @@ def _build_fx_depreciation(
     out["source"] = "World Bank; derived from PA.NUS.FCRF"
     out["indicator_code"] = "FX_YOY_DEPRECIATION_PCT"
 
-    return out[
-        ["country_iso3", "indicator_code", "year", "value", "source"]
-    ]
+    return out[["country_iso3", "indicator_code", "year", "value", "source"]]
 
 
 def _policy_rate_for_country(
@@ -220,9 +216,9 @@ def _policy_rate_for_country(
     annual["indicator_code"] = "POLICY_RATE_YOY_CHANGE_BPS"
     annual["source"] = "FRED DFF; annual mean change in basis points"
 
-    return annual[
-        ["country_iso3", "indicator_code", "year", "change_bps", "source"]
-    ].rename(columns={"change_bps": "value"})
+    return annual[["country_iso3", "indicator_code", "year", "change_bps", "source"]].rename(
+        columns={"change_bps": "value"}
+    )
 
 
 def _world_bank_indicator_batch(
@@ -247,7 +243,7 @@ def _world_bank_indicator_batch(
     for i in range(0, len(codes), chunk_size):
         chunk = codes[i : i + chunk_size]
         url = WB_URL.format(country=";".join(chunk), indicator=wb_code)
-        params = {"format": "json", "per_page": 20000, "date": f"{start}:{end}"}
+        params: dict[str, str | int] = {"format": "json", "per_page": 20000, "date": f"{start}:{end}"}
 
         response = session.get(url, params=params, timeout=30)
         response.raise_for_status()
@@ -352,13 +348,15 @@ def _parse_wb_batch_response(
     if isinstance(payload, list) and payload and isinstance(payload[0], dict) and "country_iso3" in payload[0]:
         # Already parsed records (from cache)
         for item in payload:
-            frames.append({
-                "country_iso3": str(item.get("country_iso3", "")).upper(),
-                "year": int(item["year"]),
-                "value": item["value"],
-                "source": "World Bank",
-                "flag": "ok",
-            })
+            frames.append(
+                {
+                    "country_iso3": str(item.get("country_iso3", "")).upper(),
+                    "year": int(item["year"]),
+                    "value": item["value"],
+                    "source": "World Bank",
+                    "flag": "ok",
+                }
+            )
     elif isinstance(payload, list) and len(payload) >= 2 and payload[1] is not None:
         # Raw World Bank API format
         for item in payload[1]:
@@ -372,13 +370,15 @@ def _parse_wb_batch_response(
             iso3 = item.get("countryiso3code") or (item.get("country") or {}).get("id")
             if not iso3:
                 continue
-            frames.append({
-                "country_iso3": str(iso3).upper(),
-                "year": year_int,
-                "value": value,
-                "source": "World Bank",
-                "flag": "ok",
-            })
+            frames.append(
+                {
+                    "country_iso3": str(iso3).upper(),
+                    "year": year_int,
+                    "value": value,
+                    "source": "World Bank",
+                    "flag": "ok",
+                }
+            )
 
     return pd.DataFrame(frames) if frames else pd.DataFrame()
 
@@ -456,7 +456,7 @@ def _parse_fred_csv(data: Any, series_id: str, start: int, end: int) -> pd.DataF
     df = df.dropna(subset=[date_col, value_col])
     df["year"] = df[date_col].dt.year.astype(int)
     df = df[df["year"].between(start, end)]
-    annual = df.groupby("year", as_index=False)[value_col].mean()
+    annual = df.groupby("year", as_index=False)[[value_col]].mean()
     return annual.rename(columns={value_col: "value"})[["year", "value"]]
 
 
@@ -510,19 +510,13 @@ def build_long_panel_batched(
                     raw = fetch_imf_indicator(imf_flow, imf_indicator, iso3_codes, start, end)
                     if not raw.empty:
                         raw["indicator_code"] = code
-                        output.append(
-                            raw[["country_iso3", "indicator_code", "year", "value", "source", "flag"]]
-                        )
+                        output.append(raw[["country_iso3", "indicator_code", "year", "value", "source", "flag"]])
                         fetch_meta.fresh_sources.append(f"IMF {imf_flow}")
             elif wb_code and source_type == "world_bank":
-                raw = _cached_world_bank_batch(
-                    session, iso3_codes, str(wb_code), start, end, fetch_meta, ttl_seconds
-                )
+                raw = _cached_world_bank_batch(session, iso3_codes, str(wb_code), start, end, fetch_meta, ttl_seconds)
                 if not raw.empty:
                     raw["indicator_code"] = code
-                    output.append(
-                        raw[["country_iso3", "indicator_code", "year", "value", "source", "flag"]]
-                    )
+                    output.append(raw[["country_iso3", "indicator_code", "year", "value", "source", "flag"]])
         except requests.RequestException as exc:
             LOG.warning("Batched source request failed for indicator %s: %s", code, exc)
         except Exception as exc:  # noqa: BLE001 - one bad indicator must not sink the whole panel
@@ -538,9 +532,9 @@ def build_long_panel_batched(
     panel["year"] = panel["year"].astype(int)
     panel["flag"] = panel.get("flag", "ok")
 
-    return panel[
-        ["country_iso3", "indicator_code", "year", "value", "source", "flag"]
-    ].drop_duplicates(subset=["country_iso3", "indicator_code", "year"], keep="last"), fetch_meta
+    return panel[["country_iso3", "indicator_code", "year", "value", "source", "flag"]].drop_duplicates(
+        subset=["country_iso3", "indicator_code", "year"], keep="last"
+    ), fetch_meta
 
 
 def build_long_panel(
@@ -568,25 +562,17 @@ def build_long_panel(
 
             try:
                 if code == "FX_YOY_DEPRECIATION_PCT":
-                    frame = _build_fx_depreciation(
-                        session, iso3, start, end
-                    )
+                    frame = _build_fx_depreciation(session, iso3, start, end)
                 elif code == "POLICY_RATE_YOY_CHANGE_BPS":
-                    frame = _policy_rate_for_country(
-                        session, iso3, start, end
-                    )
+                    frame = _policy_rate_for_country(session, iso3, start, end)
                 elif source_type in ("imf_weo", "imf_ifs"):
                     imf_flow = indicator.get("imf_flow", "WEO")
                     imf_indicator_code = indicator.get("imf_indicator", "")
                     if imf_indicator_code:
-                        frame = fetch_imf_indicator(
-                            imf_flow, imf_indicator_code, [iso3], start, end
-                        )
+                        frame = fetch_imf_indicator(imf_flow, imf_indicator_code, [iso3], start, end)
                         if not frame.empty:
                             frame["indicator_code"] = code
-                            frame = frame[
-                                ["country_iso3", "indicator_code", "year", "value", "source", "flag"]
-                            ]
+                            frame = frame[["country_iso3", "indicator_code", "year", "value", "source", "flag"]]
                     else:
                         frame = pd.DataFrame()
                 elif wb_code and source_type == "world_bank":

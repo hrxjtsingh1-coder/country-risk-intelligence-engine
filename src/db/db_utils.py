@@ -6,6 +6,7 @@ having the SQL layer at all for a portfolio project.
 Swap to Postgres later by changing DB_PATH usage to a SQLAlchemy engine and
 pointing `run_query` at that instead — schema.sql has no SQLite-only syntax.
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -34,10 +35,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
 def load_countries(conn: sqlite3.Connection) -> None:
     with open(CONFIG_DIR / "countries.yaml") as f:
         cfg = yaml.safe_load(f)
-    rows = [
-        (c["iso3"], c["name"], c["region"], c["income"], c.get("monetary_union"))
-        for c in cfg["countries"]
-    ]
+    rows = [(c["iso3"], c["name"], c["region"], c["income"], c.get("monetary_union")) for c in cfg["countries"]]
     conn.executemany(
         "INSERT OR REPLACE INTO countries (country_iso3, name, region, income_group, monetary_union) VALUES (?,?,?,?,?)",
         rows,
