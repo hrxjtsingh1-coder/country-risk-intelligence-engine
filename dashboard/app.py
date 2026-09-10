@@ -43,6 +43,7 @@ if str(ROOT) not in sys.path:
 
 from dashboard import ui  # noqa: E402
 from dashboard.context import Context  # noqa: E402
+from dashboard.sections import about as about_section  # noqa: E402
 from dashboard.sections import comparison as comparison_section  # noqa: E402
 from dashboard.sections import country as country_section  # noqa: E402
 from dashboard.sections import map as map_section  # noqa: E402
@@ -528,6 +529,7 @@ _RENDER_SECTIONS = [
     country_section.render_data_coverage,
     methodology_section.render_export_inspection,
     methodology_section.render_engine_integrity,
+    about_section.render_about,
 ]
 
 for _render in _RENDER_SECTIONS:
