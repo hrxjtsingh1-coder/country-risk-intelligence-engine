@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -20,6 +21,7 @@ import yaml
 from src.cleaning.clean import coverage_report, to_wide_panel
 from src.commentary.generate_commentary import generate_report
 from src.db import db_utils
+from src.governance.manifest import MANIFEST_PATH, METHODOLOGY_VERSION, build_manifest
 from src.indicators.build_panel import build_long_panel_batched
 from src.scenario.scenario_engine import run_shock_scenario
 from src.scoring.risk_score import score_panel
@@ -108,7 +110,7 @@ def main():
         ),
         "sources": ["World Bank", "FRED (US-only enrichment)"],
         "source_urls": ["https://api.worldbank.org/v2/", "https://fred.stlouisfed.org/graph/fredgraph.csv"],
-        "methodology_version": "1.1.0",
+        "methodology_version": METHODOLOGY_VERSION,
         "config_version": "config/indicators.yaml",
     }
     (out_dir / "data_metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
@@ -191,6 +193,25 @@ def main():
 
     print("[6/6] Done. Panel, DB, and commentary files written under data/processed/.")
     print("Launch the dashboard with: streamlit run dashboard/app.py")
+
+    print("[7/7] Building reproducibility manifest + coverage gate...")
+    manifest = build_manifest(
+        panel=wide_panel,
+        scores=scores,
+        dataset_mode="live",
+        signed_by=os.environ.get("ANALYST_SIGNED_BY", "pipeline-bot"),
+    )
+    coverage_status = manifest["model"]["coverage"]["status"]
+    detection_rate = manifest["model"]["backtest"]["detection_rate"]
+    print(
+        f"Manifest written to {MANIFEST_PATH} (coverage={coverage_status} · backtest detection_rate={detection_rate})"
+    )
+    if coverage_status == "issues":
+        print(
+            "WARNING: model coverage has error-severity issues. Run "
+            "`python -m src.governance.coverage` for details and repair hints.",
+            file=sys.stderr,
+        )
 
 
 if __name__ == "__main__":

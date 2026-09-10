@@ -68,6 +68,13 @@ Configured directionality makes positive contributions consistently correspond t
 
 Each live run writes `data/processed/data_metadata.json`, including run ID, retrieval timestamps, requested period, latest observation, country and indicator counts, source URLs, observation totals, and methodology/config version. The dashboard reports panel coverage, missing observations, duplicate country-years, configured range errors, and data state.
 
+A `src/governance/` layer guards against silent drift:
+
+- **Coverage-repair protocol** — `python -m src.governance.coverage` verifies that the whole configured surface (pillars, sectors, every positive-weight indicator, the validation episodes) is actually represented in the panel being scored, re-derives the derived indicators to prove they haven't changed shape, and prints the exact regenerate command for anything stale. It exits non-zero on error-severity issues.
+- **Reproducibility manifest + signoff pack** — each run fingerprints every committed input and fixture (`config/*.yaml`, `data/demo/panel_wide.csv`) plus processed outputs with SHA-256, records the methodology version, environment, coverage verdict, and backtest detection rate, and attaches a metadata-only signoff (`signed_by` / `signed_at` / `notes`). `python -m src.governance.manifest --verify` recomputes the hashes and reports per-file `ok` / `drifted` / `missing`.
+
+Both run as a blocking CI job on every push, so config/model/artifact drift fails the build instead of silently shipping stale numbers.
+
 ## Project structure
 
 ```text
@@ -78,6 +85,7 @@ src/indicators/         World Bank and US-only FRED collection
 src/scoring/            deterministic relative score and driver contributions
 src/scenario/           pooled-panel historical-sensitivity stress test
 src/commentary/         deterministic, rule-based analytical commentary
+src/governance/         coverage-repair gate + reproducibility manifest/signoff
 src/pipeline/           reproducible end-to-end live run
 dashboard/app.py        Streamlit research interface
 tests/                  deterministic analytical tests
@@ -147,7 +155,7 @@ Streamlit Community Cloud with this repository, Python dependencies from
 
 ## Limitations and roadmap
 
-The model depends on public-source definitions, revisions, publication lags, and the selected country universe. Missing data alters effective weights and may conceal an unmeasured vulnerability. The backtest checks 4 known episodes against an annual, backward-looking, cross-sectional model — it will structurally lag fast-moving shocks that unfold within a single year, and a small episode count means "flagged" is encouraging, not proof. Future work includes source snapshots, documented multi-country policy-rate series, a larger backtest set, and scheduled provenance-aware refreshes.
+The model depends on public-source definitions, revisions, publication lags, and the selected country universe. Missing data alters effective weights and may conceal an unmeasured vulnerability. The backtest checks 4 known episodes against an annual, backward-looking, cross-sectional model — it will structurally lag fast-moving shocks that unfold within a single year, and a small episode count means "flagged" is encouraging, not proof. Future work includes documented multi-country policy-rate series, a larger backtest set, and a provenance-aware refresh that surfaces drift (the reproducibility manifest already records the hashes a scheduled refresh can diff against).
 
 ## Recruiter view
 

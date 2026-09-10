@@ -39,3 +39,21 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: pip install -e .
       - run: pytest -v --tb=short
+
+  # Blocking governance gate: model coverage of the committed demo fixture plus
+  # a build->verify manifest roundtrip. Fully offline (no network calls), so a
+  # silent config/model/artifact drift fails the build on every push.
+  governance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - name: Verify model coverage of the demo fixture
+        run: python -m src.governance.coverage --panel data/demo/panel_wide.csv
+      - name: Build and verify reproducibility manifest
+        run: |
+          python -m src.governance.manifest build --signed-by "github-actions[bot]" --output /tmp/ci-manifest.json
+          python -m src.governance.manifest verify --manifest /tmp/ci-manifest.json
