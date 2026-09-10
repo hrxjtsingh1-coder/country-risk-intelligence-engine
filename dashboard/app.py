@@ -2628,9 +2628,7 @@ for r in _bt_results:
 
     diagnosics = []
     if r.verdict == "flagged" and r.peak_delta is not None:
-        diagnosics.append(
-            f"rise {r.peak_delta:+.1f} pts &middot; threshold &ge; {r.threshold_points:g}"
-        )
+        diagnosics.append(f"rise {r.peak_delta:+.1f} pts &middot; threshold &ge; {r.threshold_points:g}")
     if r.peer_drift is not None:
         diagnosics.append(f"{r.peer_drift:.0%} of other panel countries rose >= threshold")
     if r.verdict == "flagged":
@@ -2638,7 +2636,9 @@ for r in _bt_results:
             diagnosics.append(f"dominant pillar: {esc(r.dominant_pillar.replace('pillar_', '').replace('_score', ''))}")
         if r.dominant_sector:
             diagnosics.append(f"dominant sector: {esc(r.dominant_sector.replace('sector_', '').replace('_score', ''))}")
-    extra = f"<div class='card-caption' style='margin-top:6px;'>{' &middot; '.join(diagnosics)}</div>" if diagnosics else ""
+    extra = (
+        f"<div class='card-caption' style='margin-top:6px;'>{' &middot; '.join(diagnosics)}</div>" if diagnosics else ""
+    )
     st.markdown(
         f"""
         <div class="card" style="margin-bottom:12px;">

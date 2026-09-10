@@ -453,7 +453,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     print("\n" + rate_txt)
     if summary.systemic_episode:
-        print(f"Least informative: {summary.systemic_episode} (peer drift {summary.highest_drift_country})")
+        print(f"Least informative: {summary.systemic_episode} (peer drift {summary.highest_peer_drift})")
 
     if args.json:
         payload = {
