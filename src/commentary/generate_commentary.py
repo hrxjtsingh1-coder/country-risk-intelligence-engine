@@ -3,9 +3,10 @@ Turns numbers into the analyst-style write-up: Risk Score / Main drivers /
 Scenario / Impact / Analyst view / Limitations.
 
 This is rule-based text generation, not an LLM call — deterministic, free to
-run, and every sentence traces back to a specific number computed upstream.
-(An optional LLM-polish pass exists in commentary/llm_enhance.py for anyone
-who wants smoother prose; it's opt-in and never the only way to get output.)
+run, every sentence traces back to a specific number computed upstream, and
+the prose can never drift from the underlying figures. There is no LLM-polish
+layer today; if one is ever added it must remain a text-flow-only pass that
+never feeds numbers back into the engine.
 
 The goal isn't eloquence, it's traceability: a reader should be able to look
 at any sentence here and find the exact number it came from in scores/drivers/
