@@ -45,6 +45,7 @@ from dashboard import ui  # noqa: E402
 from dashboard.context import Context  # noqa: E402
 from dashboard.sections import comparison as comparison_section  # noqa: E402
 from dashboard.sections import country as country_section  # noqa: E402
+from dashboard.sections import map as map_section  # noqa: E402
 from dashboard.sections import methodology as methodology_section  # noqa: E402
 from dashboard.sections import scenario as scenario_section  # noqa: E402
 from dashboard.ui import (  # noqa: E402
@@ -512,6 +513,7 @@ ctx = Context(
 
 _RENDER_SECTIONS = [
     country_section.render_hero,
+    map_section.render_map,
     country_section.render_provenance,
     country_section.render_kpi,
     country_section.render_interpretation,
