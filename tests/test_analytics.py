@@ -4,7 +4,7 @@ import pandas as pd
 import yaml
 
 from src.cleaning.clean import clean_long_panel
-from src.scenario.scenario_engine import run_shock_scenario
+from src.scenario.scenario_engine import available_shock_presets, run_shock_scenario, shock_preset
 from src.scoring import risk_score as rs
 from src.scoring.risk_score import score_panel
 
@@ -116,6 +116,51 @@ def test_scenario_rejects_zero_variance_driver():
     data["POLICY_RATE_YOY_CHANGE_BPS"] = 1
     result = run_shock_scenario(data, "USA", 2025, "POLICY_RATE_YOY_CHANGE_BPS", 25, ["NY.GDP.MKTP.KD.ZG"])
     assert result["information_assessment"] == "INSUFFICIENT DATA"
+
+
+def test_shock_library_exposes_five_named_presets():
+    presets = available_shock_presets()
+    assert presets == ["rate_hike", "growth_slowdown", "fx_devaluation", "commodity_collapse", "banking_stress"]
+    for name in presets:
+        preset = shock_preset(name)
+        assert preset["name"]
+        assert preset["driver_code"]
+        assert isinstance(preset["default_shock_amount"], (int, float))
+        assert preset["scenario_targets"]
+        assert preset["description"]
+        assert preset["display_unit"]
+
+
+def test_shock_library_unknown_preset_raises():
+    import pytest
+
+    with pytest.raises(ValueError, match="Unknown scenario preset"):
+        shock_preset("not_a_real_preset")
+
+
+def test_scenario_runs_predefined_rate_preset():
+    result = run_shock_scenario(panel(), "USA", 2025, preset="rate_hike")
+    assert result["preset"] == "Rate shock (+100bps)"
+    assert result["driver_code"] == "POLICY_RATE_YOY_CHANGE_BPS"
+    assert result["shock_amount"] == 100.0
+    assert {d["indicator_code"] for d in result["indicator_deltas"]} == {
+        "FX_YOY_DEPRECIATION_PCT",
+        "NY.GDP.MKTP.KD.ZG",
+        "GC.DOD.TOTL.GD.ZS",
+    }
+
+
+def test_scenario_preset_gaps_driver_not_in_panel():
+    data = panel()
+    data["COMMODITY_PRICE_INDEX_PCT"] = 100.0
+    result = run_shock_scenario(data, "USA", 2025, preset="commodity_collapse")
+    assert result["driver_code"] == "COMMODITY_PRICE_INDEX_PCT"
+    assert result["shock_amount"] == -20.0
+
+    import pytest
+
+    with pytest.raises(ValueError, match="not present in the panel"):
+        run_shock_scenario(panel(), "USA", 2025, preset="commodity_collapse")
 
 
 def test_dashboard_requires_explicit_demo_selection(monkeypatch):

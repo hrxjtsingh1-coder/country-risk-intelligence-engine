@@ -15,6 +15,82 @@ import pandas as pd
 
 from src.scoring.risk_score import score_panel
 
+SHOCK_LIBRARY: dict[str, dict] = {
+    "rate_hike": {
+        "name": "Rate shock (+100bps)",
+        "driver_code": "POLICY_RATE_YOY_CHANGE_BPS",
+        "default_shock_amount": 100.0,
+        "scenario_targets": ["FX_YOY_DEPRECIATION_PCT", "NY.GDP.MKTP.KD.ZG", "GC.DOD.TOTL.GD.ZS"],
+        "display_unit": "bps",
+        "description": (
+            "Monetary tightening: +100 bps policy-rate YoY change. The panel is "
+            "annual, so an N-quarter hiking campaign is expressed as its "
+            "annualized year-over-year policy-rate change."
+        ),
+    },
+    "growth_slowdown": {
+        "name": "Growth shock (−2pp GDP)",
+        "driver_code": "NY.GDP.MKTP.KD.ZG",
+        "default_shock_amount": -2.0,
+        "scenario_targets": ["SL.UEM.TOTL.ZS", "GC.NLD.TOTL.GD.ZS", "BN.CAB.XOKA.GD.ZS"],
+        "display_unit": "pp",
+        "description": (
+            "Demand shock: real GDP growth falls 2 percentage points from the "
+            "baseline, transmitting into labour markets, the fiscal balance and "
+            "the external position."
+        ),
+    },
+    "fx_devaluation": {
+        "name": "FX shock (20% devaluation)",
+        "driver_code": "FX_YOY_DEPRECIATION_PCT",
+        "default_shock_amount": 20.0,
+        "scenario_targets": ["FP.CPI.TOTL.ZG", "FI.RES.TOTL.MO", "DT.DOD.DECT.GN.ZS", "NE.RSB.GNFS.ZS"],
+        "display_unit": "pp",
+        "description": (
+            "Currency shock: a 20pp year-over-year depreciation, transmitting "
+            "into import prices, reserves coverage and external-debt service."
+        ),
+    },
+    "commodity_collapse": {
+        "name": "Commodity shock (exporters)",
+        "driver_code": "COMMODITY_PRICE_INDEX_PCT",
+        "default_shock_amount": -20.0,
+        "scenario_targets": ["BN.CAB.XOKA.GD.ZS", "NE.RSB.GNFS.ZS", "FX_YOY_DEPRECIATION_PCT"],
+        "display_unit": "%",
+        "description": (
+            "Commodity shock: a 20% fall in export commodity prices, hitting "
+            "commodity exporters' external and fiscal positions. The driver is a "
+            "commodity-price index series; no such series is collected in "
+            "config/indicators.yaml yet, so this preset runs only once that "
+            "series exists in the panel."
+        ),
+    },
+    "banking_stress": {
+        "name": "Banking stress (credit gap)",
+        "driver_code": "BIS_CREDIT_GAP",
+        "default_shock_amount": 10.0,
+        "scenario_targets": ["FB.AST.NPER.ZS", "NY.GDP.MKTP.KD.ZG", "FX_YOY_DEPRECIATION_PCT"],
+        "display_unit": "pp",
+        "description": (
+            "Banking stress: the credit-to-GDP gap widens 10pp (a BIS-calculated "
+            "early-warning signal), transmitting into loan quality, growth and "
+            "financing conditions. Requires the BIS_CREDIT_GAP series in the panel."
+        ),
+    },
+}
+
+
+def available_shock_presets() -> list[str]:
+    """Names of the built-in named shock presets (SHOCK_LIBRARY keys)."""
+    return list(SHOCK_LIBRARY)
+
+
+def shock_preset(name: str) -> dict:
+    """Return a copy of a named preset, raising a clear error if unknown."""
+    if name not in SHOCK_LIBRARY:
+        raise ValueError(f"Unknown scenario preset '{name}'. Known presets: {', '.join(available_shock_presets())}.")
+    return dict(SHOCK_LIBRARY[name])
+
 
 def _ols(x: pd.Series, y: pd.Series) -> tuple[float, float, int, float, float]:
     data = pd.DataFrame({"x": x, "y": y}).replace([np.inf, -np.inf], np.nan).dropna()
@@ -63,15 +139,30 @@ def run_shock_scenario(
     panel: pd.DataFrame,
     country_iso3: str,
     year: int,
-    driver_code: str,
-    shock_amount: float,
-    scenario_targets: list[str],
+    driver_code: str | None = None,
+    shock_amount: float = 0.0,
+    scenario_targets: list[str] | None = None,
+    preset: str | None = None,
 ) -> dict:
     if panel is None or panel.empty:
         raise ValueError("Panel is empty.")
 
+    preset_name = None
+
+    if preset is not None:
+        resolved_preset = shock_preset(preset)
+        preset_name = str(resolved_preset["name"])
+        driver_code = str(resolved_preset["driver_code"])
+        shock_amount = float(resolved_preset["default_shock_amount"])
+        scenario_targets = list(resolved_preset["scenario_targets"])
+
+    if not driver_code:
+        raise ValueError("A shock driver_code or a named preset must be supplied.")
+
     if driver_code not in panel.columns:
         raise ValueError(f"Scenario driver {driver_code} is not present in the panel.")
+
+    scenario_targets = list(scenario_targets or [])
 
     selected = panel[
         panel["country_iso3"].astype(str).eq(str(country_iso3))
@@ -184,6 +275,7 @@ def run_shock_scenario(
         not observed_driver.empty and (shocked_driver < observed_driver.min() or shocked_driver > observed_driver.max())
     )
     return {
+        "preset": preset_name,
         "driver_code": driver_code,
         "shock_amount": float(shock_amount),
         "baseline_score": baseline_score,

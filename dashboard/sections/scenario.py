@@ -26,6 +26,24 @@ from dashboard.ui import (
 )
 
 
+def _scenario_meta(ctx: Context) -> dict | None:
+    return ctx.scenario if isinstance(ctx.scenario, dict) else None
+
+
+def _scenario_hero_title(ctx: Context) -> str:
+    meta = _scenario_meta(ctx)
+    if meta and meta.get("preset"):
+        return f"{esc(str(meta['preset']))}"
+    return f'Policy-rate sensitivity <span style="color:{COLORS["violet"]};"> {fmt_delta(ctx.shock, 0)} bps</span>'
+
+
+def _scenario_driver_code(ctx: Context) -> str:
+    meta = _scenario_meta(ctx)
+    if meta and meta.get("driver_code"):
+        return str(meta["driver_code"])
+    return "POLICY_RATE_YOY_CHANGE_BPS"
+
+
 def render_scenario_laboratory(ctx: Context) -> None:
     run_scenario_btn = ctx.run_scenario_btn
     scenario_error = ctx.scenario_error
@@ -53,11 +71,10 @@ def render_scenario_laboratory(ctx: Context) -> None:
                 {"ACTIVE SHOCK" if run_scenario_btn else "SCENARIO READY"}
             </div>
             <div class="scenario-title">
-                Policy-rate sensitivity
-                <span style="color:{COLORS["violet"]};"> {fmt_delta(ctx.shock, 0)} bps</span>
+                {_scenario_hero_title(ctx)}
             </div>
             <div class="card-caption" style="margin-top:7px;">
-                Driver: POLICY_RATE_YOY_CHANGE_BPS · Baseline: {esc(ctx.country_label)}
+                Driver: {esc(_scenario_driver_code(ctx))} · Baseline: {esc(ctx.country_label)}
                 · {int(ctx.year)} · score {fmt_number(ctx.score_value, 1)}
             </div>
         </div>
@@ -168,63 +185,63 @@ def render_scenario_laboratory(ctx: Context) -> None:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        target_codes = [
-            "FX_YOY_DEPRECIATION_PCT",
-            "NY.GDP.MKTP.KD.ZG",
-            "GC.DOD.TOTL.GD.ZS",
-        ]
+        deltas = []
+        if isinstance(scenario, dict):
+            deltas = [item for item in scenario.get("indicator_deltas", []) if isinstance(item, dict)]
 
-        target_cols = st.columns(3)
+        target_codes_pretty = ", ".join(esc(str(item.get("indicator_code", ""))) for item in deltas) or "no targets"
 
-        for idx, code in enumerate(target_codes):
-            with target_cols[idx]:
-                baseline_target = None
-                if not ctx.current_row.empty and code in ctx.current_row.index:
-                    baseline_target = ctx.current_row[code]
+        if deltas:
+            target_cols = st.columns(min(len(deltas), 4))
 
-                scenario_target = None
+            for idx, item in enumerate(deltas[:4]):
+                with target_cols[idx]:
+                    code = str(item.get("indicator_code", ""))
+                    baseline_target = item.get("baseline_value")
+                    delta = item.get("estimated_delta")
 
-                if isinstance(scenario, dict):
-                    for item in scenario.get("indicator_deltas", []):
-                        if isinstance(item, dict) and item.get("indicator_code") == code:
-                            delta = item.get("estimated_delta")
-                            base = item.get("baseline_value")
-                            if delta is not None and not pd.isna(delta) and base is not None and not pd.isna(base):
-                                scenario_target = base + delta
-                            break
+                    scenario_target = None
+                    if (
+                        baseline_target is not None
+                        and not pd.isna(baseline_target)
+                        and delta is not None
+                        and not pd.isna(delta)
+                    ):
+                        scenario_target = float(baseline_target) + float(delta)
 
-                st.markdown(
-                    f"""
-                    <div class="card">
-                        <div class="card-label">{esc(code)}</div>
-                        <div style="margin-top:12px;color:#7e8a9b;font-size:10px;">BASELINE</div>
-                        <div style="font-family:'DM Mono';font-size:15px;color:#e8eef6;">
-                            {esc(fmt_number(baseline_target, 2) if baseline_target is not None else "—")}
+                    st.markdown(
+                        f"""
+                        <div class="card">
+                            <div class="card-label">{esc(code)}</div>
+                            <div style="margin-top:12px;color:#7e8a9b;font-size:10px;">BASELINE</div>
+                            <div style="font-family:'DM Mono';font-size:15px;color:#e8eef6;">
+                                {esc(fmt_number(baseline_target, 2) if baseline_target is not None else "—")}
+                            </div>
+                            <div style="margin-top:9px;color:#7e8a9b;font-size:10px;">SCENARIO</div>
+                            <div style="font-family:'DM Mono';font-size:15px;color:{COLORS["violet"]};">
+                                {esc(fmt_number(scenario_target, 2) if scenario_target is not None else "engine output")}
+                            </div>
                         </div>
-                        <div style="margin-top:9px;color:#7e8a9b;font-size:10px;">SCENARIO</div>
-                        <div style="font-family:'DM Mono';font-size:15px;color:{COLORS["violet"]};">
-                            {esc(fmt_number(scenario_target, 2) if scenario_target is not None else "engine output")}
-                        </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+                        """,
+                        unsafe_allow_html=True,
+                    )
 
         st.markdown("<br>", unsafe_allow_html=True)
 
         st.markdown(
-            """
+            f"""
             <div class="card">
                 <div class="card-label">TRANSMISSION CHANNELS</div>
                 <div style="margin-top:13px;color:#bdc8d6;font-size:12px;line-height:1.75;">
-                    The scenario is passed through the existing engine targets:
-                    FX depreciation, real GDP growth and government debt. The UI
-                    does not substitute its own economic model; it only visualizes
-                    the returned scenario output.
+                    The shock is passed through the engine's estimated transmission
+                    channels: {target_codes_pretty}. The UI does not substitute its
+                    own economic model; it only visualizes the returned scenario output.
                 </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
     else:
-        empty_state("Set a non-zero policy-rate shock to explore the scenario engine output.")
+        empty_state(
+            "Choose a named preset, or set a non-zero policy-rate shock, to explore the scenario engine output."
+        )

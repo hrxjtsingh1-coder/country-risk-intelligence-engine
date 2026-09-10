@@ -32,7 +32,7 @@ import yaml
 from src.commentary.generate_commentary import generate_report
 from src.runtime import data_state
 from src.runtime.live_data import LiveDataUnavailable, fetch_live_panel
-from src.scenario.scenario_engine import run_shock_scenario
+from src.scenario.scenario_engine import available_shock_presets, run_shock_scenario, shock_preset
 from src.scoring.risk_score import score_panel, top_drivers
 
 # Run from any working directory: make both the package root `src` and the
@@ -280,15 +280,44 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-    shock = st.number_input(
-        "Policy rate YoY change (bps)",
-        min_value=-1000,
-        max_value=1000,
-        value=0,
-        step=25,
-        key="policy_rate_shock",
-        help="Original scenario driver: POLICY_RATE_YOY_CHANGE_BPS",
+    preset_choices = ["+ None (custom shock)"] + [shock_preset(name)["name"] for name in available_shock_presets()]
+
+    preset_label = st.selectbox(
+        "Scenario preset",
+        preset_choices,
+        index=0,
+        key="scenario_preset",
     )
+
+    selected_preset_key = None
+    if preset_label != preset_choices[0]:
+        for _name in available_shock_presets():
+            if shock_preset(_name)["name"] == preset_label:
+                selected_preset_key = _name
+                break
+
+    if selected_preset_key is None:
+        shock = st.number_input(
+            "Policy rate YoY change (bps)",
+            min_value=-1000,
+            max_value=1000,
+            value=0,
+            step=25,
+            key="policy_rate_shock",
+            help="Original scenario driver: POLICY_RATE_YOY_CHANGE_BPS",
+        )
+    else:
+        _preset_config = shock_preset(selected_preset_key)
+        st.markdown(
+            f"""
+            <div class="micro" style="margin-top:6px; line-height:1.6;">
+                {esc(str(_preset_config["driver_code"]))} · {esc(str(_preset_config["display_unit"]))}
+                <br>{esc(str(_preset_config["description"]))}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        shock = float(_preset_config["default_shock_amount"])
 
     st.markdown("---")
 
@@ -368,12 +397,29 @@ except Exception as exc:
 
 driver_code = "POLICY_RATE_YOY_CHANGE_BPS"
 shock_amount = float(shock)
-run_scenario_btn = not np.isclose(shock_amount, 0.0)
+run_scenario_btn = False
 scenario_result = None
 scenario = None
 scenario_error = None
 
-if run_scenario_btn:
+if selected_preset_key is not None:
+    _preset_config = shock_preset(selected_preset_key)
+    run_scenario_btn = True
+    preset_driver = str(_preset_config["driver_code"])
+    if preset_driver not in panel.columns:
+        scenario_error = ValueError(
+            f"The '{_preset_config['name']}' preset needs the driver series "
+            f"{preset_driver}, which this panel does not collect yet. "
+            "Once a collector provides it in config/indicators.yaml the preset runs as-is."
+        )
+    else:
+        try:
+            scenario_result = run_shock_scenario(panel, country, year, preset=selected_preset_key)
+            scenario = scenario_result
+        except Exception as exc:
+            scenario_error = exc
+elif not np.isclose(shock_amount, 0.0):
+    run_scenario_btn = True
     try:
         scenario_result = run_shock_scenario(
             panel,
