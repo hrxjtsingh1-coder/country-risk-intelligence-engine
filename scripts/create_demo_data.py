@@ -8,6 +8,7 @@ they must not be presented as real economic observations.
 from __future__ import annotations
 
 import argparse
+from math import cos, sin
 from pathlib import Path
 
 import pandas as pd
@@ -47,6 +48,11 @@ def create_panel(countries: list[dict], start: int, end: int) -> pd.DataFrame:
         for year in years:
             elapsed = year - start
             cycle = ((elapsed + country_index) % 5) - 2
+            # Shared global commodity cycle (deterministic). Correlates with the
+            # export-channel targets so the commodity-collapse preset transmits:
+            # when commodity prices fall, exporters' current account weakens and
+            # their currency depreciates.
+            commodity_signal = -18.0 + 9.0 * sin(elapsed * 0.9) + 7.0 * cos(elapsed * 0.45)
             rows.append(
                 {
                     "country_iso3": iso3,
@@ -55,14 +61,16 @@ def create_panel(countries: list[dict], start: int, end: int) -> pd.DataFrame:
                     "NY.GDP.MKTP.KD.ZG": round(4.0 - profile * 0.28 - cycle * 0.12, 3),
                     "SL.UEM.TOTL.ZS": round(6.0 + profile * 0.7 + cycle * 0.2, 3),
                     "GC.DOD.TOTL.GD.ZS": round(52.0 + profile * 9.0 + elapsed * 0.45, 3),
-                    "BN.CAB.XOKA.GD.ZS": round(1.5 - profile * 0.6 + cycle * 0.15, 3),
+                    "BN.CAB.XOKA.GD.ZS": round(1.5 - profile * 0.6 + cycle * 0.15 + 0.10 * commodity_signal, 3),
                     "FI.RES.TOTL.MO": round(4.5 - profile * 0.22 + cycle * 0.08, 3),
                     "DT.DOD.DECT.GN.ZS": round(38.0 + profile * 7.0 + elapsed * 0.25, 3),
                     "FB.AST.NPER.ZS": round(2.8 + profile * 0.35 + cycle * 0.1, 3),
-                    "FX_YOY_DEPRECIATION_PCT": round(2.0 + profile * 1.1 + cycle * 0.25, 3),
+                    "FX_YOY_DEPRECIATION_PCT": round(2.0 + profile * 1.1 + cycle * 0.25 - 0.05 * commodity_signal, 3),
                     "POLICY_RATE_YOY_CHANGE_BPS": round(35.0 + profile * 7.0 + cycle * 4.0, 3),
                     "GC.NLD.TOTL.GD.ZS": round(-2.0 + profile * 0.5 - cycle * 0.1, 3),
                     "NE.RSB.GNFS.ZS": round(1.0 - profile * 0.4 + cycle * 0.2, 3),
+                    "COMMODITY_PRICE_INDEX_PCT": round(commodity_signal, 3),
+                    "BIS_CREDIT_GAP": round(2.0 - profile * 1.4 + cycle * 2.2 - (elapsed % 3) * 1.5, 3),
                 }
             )
 

@@ -27,6 +27,7 @@ from src.runtime.provenance import Provenance, make_provenance
 
 WORLD_BANK_SOURCE = {"name": "World Bank Indicators API", "url": "https://api.worldbank.org/v2"}
 FRED_SOURCE = {"name": "FRED (Federal Reserve Economic Data)", "url": "https://fred.stlouisfed.org"}
+BIS_SOURCE = {"name": "BIS Statistics (credit-to-GDP gaps)", "url": "https://stats.bis.org/"}
 
 
 class LiveDataUnavailable(Exception):
@@ -49,6 +50,7 @@ class LiveResult:
     latest_common_year: int
     world_bank_ok: bool
     fred_ok: bool
+    bis_ok: bool = False
     fetch_metadata: FetchMetadata = field(default_factory=FetchMetadata)
 
 
@@ -143,6 +145,7 @@ def fetch_live_panel(
 
     world_bank_ok = bool(long_panel["source"].astype(str).str.contains("World Bank", case=False).any())
     fred_ok = bool(long_panel["source"].astype(str).str.contains("FRED", case=False).any())
+    bis_ok = bool(long_panel["source"].astype(str).str.contains("BIS", case=False).any())
 
     expected = len(iso3_codes) * len(weighted_indicators)
     received = (
@@ -160,13 +163,19 @@ def fetch_live_panel(
         )
     if not fred_ok:
         validation_failures.append(
-            "FRED enrichment (US policy-rate YoY change) unavailable this run — "
-            "World Bank data is unaffected; this indicator carries zero weight "
-            "in the composite score regardless (see config/indicators.yaml)."
+            "FRED enrichment (US policy-rate YoY change and the global commodity-price "
+            "index) unavailable this run — World Bank data is unaffected; these indicators "
+            "carry zero weight in the composite score regardless (see config/indicators.yaml)."
+        )
+    if not bis_ok:
+        validation_failures.append(
+            "BIS credit-to-GDP gap unavailable this run — the banking-stress scenario "
+            "preset will report a missing driver, but World Bank data and composite "
+            "scores are unaffected (the gap carries zero weight; see config/indicators.yaml)."
         )
 
     provenance = make_provenance(
-        sources=[WORLD_BANK_SOURCE] + ([FRED_SOURCE] if fred_ok else []),
+        sources=[WORLD_BANK_SOURCE] + ([FRED_SOURCE] if fred_ok else []) + ([BIS_SOURCE] if bis_ok else []),
         requested_period=f"{start_year}-{end_year}",
         latest_observation_year=latest_year,
         country_count=len(iso3_codes),
@@ -184,5 +193,6 @@ def fetch_live_panel(
         latest_common_year=latest_year,
         world_bank_ok=world_bank_ok,
         fred_ok=fred_ok,
+        bis_ok=bis_ok,
         fetch_metadata=fetch_meta,
     )

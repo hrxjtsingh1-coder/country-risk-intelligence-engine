@@ -411,8 +411,9 @@ if selected_preset_key is not None:
     if preset_driver not in panel.columns:
         scenario_error = ValueError(
             f"The '{_preset_config['name']}' preset needs the driver series "
-            f"{preset_driver}, which this panel does not collect yet. "
-            "Once a collector provides it in config/indicators.yaml the preset runs as-is."
+            f"{preset_driver}, which is not present in this panel. The collector "
+            "now supplies it (see config/indicators.yaml); a freshly built or "
+            "refreshed panel will enable this preset as-is."
         )
     else:
         try:

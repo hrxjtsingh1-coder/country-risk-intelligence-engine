@@ -59,10 +59,10 @@ SHOCK_LIBRARY: dict[str, dict] = {
         "display_unit": "%",
         "description": (
             "Commodity shock: a 20% fall in export commodity prices, hitting "
-            "commodity exporters' external and fiscal positions. The driver is a "
-            "commodity-price index series; no such series is collected in "
-            "config/indicators.yaml yet, so this preset runs only once that "
-            "series exists in the panel."
+            "commodity exporters' external and fiscal positions. Driver series: "
+            "COMMODITY_PRICE_INDEX_PCT, the global all-commodities price index "
+            "annual YoY % (FRED PALLFNFINDEXM, IMF-derived), identical across "
+            "countries in a given year."
         ),
     },
     "banking_stress": {
@@ -74,7 +74,9 @@ SHOCK_LIBRARY: dict[str, dict] = {
         "description": (
             "Banking stress: the credit-to-GDP gap widens 10pp (a BIS-calculated "
             "early-warning signal), transmitting into loan quality, growth and "
-            "financing conditions. Requires the BIS_CREDIT_GAP series in the panel."
+            "financing conditions. Driver series: BIS_CREDIT_GAP (WS_CREDIT_GAP "
+            "SDMX dataflow, Q4-annualized), the deviation of credit/GDP from its "
+            "HP-filtered trend."
         ),
     },
 }

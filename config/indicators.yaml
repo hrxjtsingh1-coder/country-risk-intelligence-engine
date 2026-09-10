@@ -326,9 +326,30 @@ indicators:
     risk_direction: 1
     source: bis
     source_url: "https://www.bis.org/statistics/credit_gap.htm"
+    source_url_api: "https://stats.bis.org/en/Page?page=help/sdmx_rest2"
     frequency: quarterly
-    transformation: "BIS credit-to-GDP gap (deviation of credit/GDP from its long-term trend). Positive = credit overheating."
+    transformation: "BIS credit-to-GDP gap (deviation of credit/GDP from its one-sided HP-filtered long-run trend), drawn from the WS_CREDIT_GAP SDMX dataflow (key Q.<ISO2>.P.A.C) and annualized to the year-end (Q4) observation. Positive = credit overheating."
     unit: "pp of GDP"
-    note: "Reserved: BIS datapoint not yet wired into the collector. Zero weight until then."
+    note: "Shock driver for the banking-stress preset. Weight 0.00 reserved: it stays out of the composite score so methodology and backtest results remain unchanged; it drives the scenario, it is not a scored input."
     min: -100
     max: 200
+
+  # Shock-driver series (reserved, zero weight until they are scored as well).
+  # COMMODITY_PRICE_INDEX_PCT is the global all-commodities price index from
+  # FRED/IMF, used by the commodity-collapse preset as a country-agnostic swing.
+  - code: COMMODITY_PRICE_INDEX_PCT
+    label: Commodity-price index (global)
+    category: Terms of trade
+    pillar: External Vulnerability
+    weight: 0.00
+    risk_direction: 1
+    source: fred_global
+    fred: PALLFNFINDEXM
+    source_url: "https://fred.stlouisfed.org/series/PALLFNFINDEXM"
+    source_series: PALLFNFINDEXM
+    frequency: monthly aggregated to annual mean
+    transformation: "Global Price Index of All Commodities (index 2016=100), annual mean of monthly observations, then year-over-year percent change. Identical across countries in a given year."
+    unit: "% YoY"
+    note: "Shock driver for the commodity-collapse preset (exporters' terms-of-trade swing). Weight 0.00 reserved: it stays out of the composite score so methodology and backtest results remain unchanged; it drives the scenario, it is not a scored input. Positive = prices rising."
+    min: -100
+    max: 100
