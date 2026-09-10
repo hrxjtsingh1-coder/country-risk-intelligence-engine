@@ -1,0 +1,57 @@
+# Historical backtest episodes ("instant replay" cases).
+#
+# The harness scores whatever panel is loaded, then asks: would the composite
+# (and its pillar/sector components) have flagged each of these known stress
+# episodes before or around the event year? All values are reproduced side by
+# side in reports so a verdict is always explainable, never a black box.
+#
+# - detection_window_years: how many years AFTER the event year we still count
+#   as "on time" (event_year + window). A fast-moving shock can overshoot the
+#   exact event year, so the verdict uses the peak score inside this window.
+# - pass_threshold_points: minimum composite rise (baseline -> peak-in-window)
+#   required to count as "flagged". Rises below this are treated as noise.
+# Per-episode `window_years` / `pass_threshold_points` override the defaults.
+#
+# Episodes are countries already in config/countries.yaml with years inside
+# the standard live-fetch window (2012+), so they evaluate real data
+# automatically once live World Bank data is loaded — no extra step required.
+
+detection_window_years: 1
+pass_threshold_points: 3.0
+
+episodes:
+  - iso3: TUR
+    label: Turkiye — 2018 currency crisis
+    baseline_year: 2016
+    event_year: 2018
+    note: >-
+      The lira lost roughly 30% of its value against the US dollar in 2018,
+      driven by a large current-account deficit, heavy external corporate
+      debt, and rapid monetary tightening.
+
+  - iso3: BRA
+    label: Brazil — 2015-16 recession
+    baseline_year: 2013
+    event_year: 2016
+    note: >-
+      GDP contracted roughly 7% cumulatively over 2015-16, alongside
+      double-digit inflation and a widening fiscal deficit during a deep
+      political and fiscal crisis.
+
+  - iso3: ZAF
+    label: South Africa — fiscal deterioration, 2017-2020
+    baseline_year: 2017
+    event_year: 2020
+    note: >-
+      Persistent fiscal slippage and state-utility stress widened the budget
+      deficit and public debt trajectory well before the COVID-19 shock added
+      a sharp additional contraction in 2020.
+
+  - iso3: GBR
+    label: United Kingdom — 2022 gilt market shock
+    baseline_year: 2019
+    event_year: 2022
+    note: >-
+      September 2022's unfunded fiscal package triggered a sharp gilt
+      sell-off and sterling depreciation, on top of the UK's post-2020
+      inflation and current-account pressures.

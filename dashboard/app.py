@@ -25,7 +25,7 @@ import plotly.graph_objects as go
 import streamlit as st
 import yaml
 
-from src.analysis.backtest import run_backtest
+from src.analysis.backtest import backtest_summary, run_backtest
 from src.commentary.generate_commentary import generate_report
 from src.runtime import data_state
 from src.runtime.live_data import LiveDataUnavailable, fetch_live_panel
@@ -2582,18 +2582,26 @@ if USING_DEMO_DATA:
     )
 
 _bt_results = run_backtest(scores, data_is_synthetic=USING_DEMO_DATA)
-_bt_flagged = sum(1 for r in _bt_results if r.verdict == "flagged")
-_bt_missed = sum(1 for r in _bt_results if r.verdict == "missed")
-_bt_inconclusive = sum(1 for r in _bt_results if r.verdict == "inconclusive")
+_bt_summary = backtest_summary(_bt_results)
+_bt_flagged = _bt_summary.flagged
+_bt_missed = _bt_summary.missed
+_bt_inconclusive = _bt_summary.inconclusive
+
+_bt_metrics = [
+    f"<strong>{_bt_flagged}</strong> flagged",
+    f"<strong>{_bt_missed}</strong> missed",
+    f"<strong>{_bt_inconclusive}</strong> inconclusive (data gap)",
+]
+if _bt_summary.detection_rate is not None:
+    _bt_metrics.append(f"detection rate <strong>{_bt_summary.detection_rate:.0%}</strong>")
+if _bt_summary.median_peak_delta is not None:
+    _bt_metrics.append(f"median peak delta <strong>{_bt_summary.median_peak_delta:+.1f} pts</strong>")
 
 st.markdown(
     f"""
     <div class="card" style="margin-bottom:16px;">
         <div class="card-caption">
-            <strong>{_bt_flagged}</strong> flagged &middot;
-            <strong>{_bt_missed}</strong> missed &middot;
-            <strong>{_bt_inconclusive}</strong> inconclusive (data gap) &middot;
-            {len(_bt_results)} known episodes checked
+            {" &middot; ".join(_bt_metrics)} &middot; {len(_bt_results)} known episodes checked
         </div>
     </div>
     """,
@@ -2608,12 +2616,29 @@ _verdict_style = {
 
 for r in _bt_results:
     color, tag = _verdict_style[r.verdict]
-    detail = (
-        f"Score {r.baseline_year}: {r.baseline_score:.1f} &rarr; {r.event_year}: {r.event_score:.1f} "
-        f"({r.delta:+.1f} pts)"
-        if r.delta is not None
-        else f"No scored data for {r.baseline_year} and/or {r.event_year} in the current panel."
-    )
+    if r.delta is not None:
+        detail = (
+            f"Score {r.baseline_year}: {r.baseline_score:.1f} &rarr; {r.event_year}: {r.event_score:.1f} "
+            f"({r.delta:+.1f} pts at event)"
+        )
+        if r.peak_year != r.event_year and r.peak_score is not None:
+            detail += f" &middot; peak {r.peak_year}: {r.peak_score:.1f} ({r.peak_delta:+.1f} pts)"
+    else:
+        detail = f"No scored data for {r.baseline_year} and/or {r.event_year}+ window in the current panel."
+
+    diagnosics = []
+    if r.verdict == "flagged" and r.peak_delta is not None:
+        diagnosics.append(
+            f"rise {r.peak_delta:+.1f} pts &middot; threshold &ge; {r.threshold_points:g}"
+        )
+    if r.peer_drift is not None:
+        diagnosics.append(f"{r.peer_drift:.0%} of other panel countries rose >= threshold")
+    if r.verdict == "flagged":
+        if r.dominant_pillar:
+            diagnosics.append(f"dominant pillar: {esc(r.dominant_pillar.replace('pillar_', '').replace('_score', ''))}")
+        if r.dominant_sector:
+            diagnosics.append(f"dominant sector: {esc(r.dominant_sector.replace('sector_', '').replace('_score', ''))}")
+    extra = f"<div class='card-caption' style='margin-top:6px;'>{' &middot; '.join(diagnosics)}</div>" if diagnosics else ""
     st.markdown(
         f"""
         <div class="card" style="margin-bottom:12px;">
@@ -2623,6 +2648,7 @@ for r in _bt_results:
             </div>
             <div class="card-caption" style="margin-top:6px;">{esc(r.note)}</div>
             <div class="card-caption" style="margin-top:8px;font-family:'DM Mono',monospace;">{detail}</div>
+            {extra}
         </div>
         """,
         unsafe_allow_html=True,
@@ -2635,13 +2661,14 @@ A dashboard that looks convincing and a model that actually works are two
 different things — this section checks the second one honestly, using real
 historical episodes for countries already tracked here.
 
-**Flagged** means the composite score rose by at least 3 points from the
-baseline year to the event year — a real signal, not noise.
-**Missed** means it didn't, which is a genuine limitation worth naming, not
-hiding: this is an annual, backward-looking, cross-sectional model — it
-will structurally lag fast-moving currency or market-confidence shocks that
-unfold within a single year, and it has no early-warning mechanism beyond
-what's already in the YoY indicator changes it's built from.
+**Flagged** means the composite score rose by at least the threshold (default
+3 points) from the baseline year to the peak inside the detection window —
+a real signal, not noise. The window is the event year plus one year, so a
+fast-moving shock that registers just after the event still counts as caught,
+and the dominant pillar/sector that actually moved is named.
+**Missed** means it didn't rise enough, which is a genuine limitation worth
+naming, not hiding, and **peer drift** says whether the move was country-specific
+or just the rest of the panel moving with it (high drift = low information).
 **No data** means the panel doesn't currently have both years scored for
 that country — expand the fetch window to see it.
         """
