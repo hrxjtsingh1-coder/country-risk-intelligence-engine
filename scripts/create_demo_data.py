@@ -61,10 +61,17 @@ def create_panel(countries: list[dict], start: int, end: int) -> pd.DataFrame:
                     "FB.AST.NPER.ZS": round(2.8 + profile * 0.35 + cycle * 0.1, 3),
                     "FX_YOY_DEPRECIATION_PCT": round(2.0 + profile * 1.1 + cycle * 0.25, 3),
                     "POLICY_RATE_YOY_CHANGE_BPS": round(35.0 + profile * 7.0 + cycle * 4.0, 3),
+                    "GC.NLD.TOTL.GD.ZS": round(-2.0 + profile * 0.5 - cycle * 0.1, 3),
+                    "NE.RSB.GNFS.ZS": round(1.0 - profile * 0.4 + cycle * 0.2, 3),
                 }
             )
 
-    return pd.DataFrame(rows).sort_values(["country_iso3", "year"]).reset_index(drop=True)
+    panel = pd.DataFrame(rows).sort_values(["country_iso3", "year"]).reset_index(drop=True)
+    panel["OUTPUT_GAP_PROXY_PCT"] = panel.groupby("country_iso3")["NY.GDP.MKTP.KD.ZG"].transform(
+        lambda s: (s - s.rolling(3, min_periods=2).mean()).round(3)
+    )
+    panel["PUBLIC_DEBT_TRAJECTORY_PCT"] = panel.groupby("country_iso3")["GC.DOD.TOTL.GD.ZS"].diff(3).round(3)
+    return panel
 
 
 def main() -> None:

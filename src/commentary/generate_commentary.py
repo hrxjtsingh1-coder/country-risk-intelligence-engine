@@ -20,14 +20,18 @@ DIRECTION_PHRASE = {
     "FP.CPI.TOTL.ZG": ("Elevated inflation", "Contained inflation"),
     "NY.GDP.MKTP.KD.ZG": ("Weakening growth", "Resilient growth"),
     "SL.UEM.TOTL.ZS": ("High unemployment", "Tight labor market"),
+    "OUTPUT_GAP_PROXY_PCT": ("Output below trend", "Output above trend"),
     "POLICY_RATE_YOY_CHANGE_BPS": ("Rapid policy tightening", "Easing monetary stance"),
     "GC.DOD.TOTL.GD.ZS": ("High public debt", "Contained public debt"),
+    "GC.NLD.TOTL.GD.ZS": ("Large fiscal deficit", "Fiscal surplus"),
+    "PUBLIC_DEBT_TRAJECTORY_PCT": ("Fast-rising debt burden", "Stable or declining debt"),
     "BN.CAB.XOKA.GD.ZS": ("Current account deficit pressure", "Current account surplus cushion"),
+    "FI.RES.TOTL.MO": ("Thin FX-reserve buffer", "Ample FX reserves"),
+    "DT.DOD.DECT.GN.ZS": ("High external debt burden", "Low external debt burden"),
+    "NE.RSB.GNFS.ZS": ("Trade balance deficit", "Trade surplus"),
     "FX_YOY_DEPRECIATION_PCT": ("Currency depreciation", "Currency strength"),
     "FB.AST.NPER.ZS": ("Rising bad loans in the banking sector", "Healthy loan books"),
     "BIS_CREDIT_GAP": ("Credit-boom warning signal", "Subdued credit growth"),
-    "FI.RES.TOTL.MO": ("Thin FX-reserve buffer", "Ample FX reserves"),
-    "DT.DOD.DECT.GN.ZS": ("High external debt burden", "Low external debt burden"),
 }
 
 
@@ -186,8 +190,9 @@ def _analyst_view(
 
 def _limitations(completeness: float) -> str:
     base = [
-        "Cross-sectional z-scores compare a country to the OTHER countries in this panel in the SAME year, "
-        "not to a fixed global benchmark or to its own history beyond the single year-over-year comparison shown above.",
+        "Each indicator is z-scored against both the country's own history (time dimension, minimum five years) "
+        "and its peer group in the same year (cross-sectional dimension), then blended — a side with too few "
+        "observations is dropped so the other carries the full weight rather than forcing garbage into the blend.",
         "Scenario elasticities are pooled-panel OLS correlations, not a causal or structural model — "
         "they ignore lags, expectations effects, and country-specific transmission channels.",
         "Several indicators (e.g. external debt, credit-to-GDP gap) are only reported by their source for a subset "

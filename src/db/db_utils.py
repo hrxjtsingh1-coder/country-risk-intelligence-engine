@@ -57,7 +57,18 @@ def load_scores(conn: sqlite3.Connection, scores: pd.DataFrame, drivers: pd.Data
     scores[["country_iso3", "year", "risk_score", "risk_band", "data_completeness"]].to_sql(
         "risk_scores", conn, if_exists="append", index=False, method="multi", chunksize=500
     )
-    drivers[["country_iso3", "year", "indicator_code", "category", "z_risk", "weighted_contribution"]].to_sql(
+    driver_cols = [
+        "country_iso3",
+        "year",
+        "indicator_code",
+        "category",
+        "z_time",
+        "z_peer",
+        "z_combined",
+        "z_risk",
+        "weighted_contribution",
+    ]
+    drivers[[c for c in driver_cols if c in drivers.columns]].to_sql(
         "score_drivers", conn, if_exists="append", index=False, method="multi", chunksize=500
     )
     conn.commit()

@@ -37,14 +37,19 @@ CREATE TABLE IF NOT EXISTS risk_scores (
 
 -- One row per (country, year, indicator) driver contribution — this is what
 -- "Main drivers" in the commentary is generated from, kept so a score can
--- always be explained after the fact without recomputation.
+-- always be explained after the fact without recomputation.  z_time, z_peer,
+-- and z_combined carry the raw normalisation components so the top-drivers
+-- table is fully self-contained.
 CREATE TABLE IF NOT EXISTS score_drivers (
     country_iso3          TEXT NOT NULL,
     year                  INTEGER NOT NULL,
     indicator_code        TEXT NOT NULL,
     category              TEXT,
-    z_risk                REAL,
-    weighted_contribution REAL,
+    z_time                REAL,            -- z against the country's own history
+    z_peer                REAL,            -- z against the country's peer group in the same year
+    z_combined            REAL,            -- blended z (time z-weighted + peer z-weighted)
+    z_risk                REAL,            -- combined z multiplied by risk_direction
+    weighted_contribution REAL,            -- z_risk × indicator weight
     FOREIGN KEY (country_iso3, year) REFERENCES risk_scores(country_iso3, year)
 );
 

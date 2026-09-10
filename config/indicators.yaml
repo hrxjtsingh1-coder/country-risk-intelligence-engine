@@ -1,9 +1,55 @@
+# Risk-scoring methodology (Phase 4 spec).
+#
+# Every indicator below is traceable: it carries its source, transformation,
+# unit, plausibility bounds, and the pillar + weight it feeds.
+
+# ---------------------------------------------------------------------------
+# Scoring method parameters
+# ---------------------------------------------------------------------------
+# Dual normalization: each indicator is z-scored TWO ways and blended:
+#   - history_z : against the country's OWN history (the panel lookback window,
+#                  nominally 10 years)
+#   - peer_z    : against the country's PEER GROUP (advanced / emerging, from
+#                  config/countries.yaml) in the same year
+# The blend is configurable; a side missing too few observations is dropped and
+# the remaining side carries the full weight rather than forcing garbage in.
+scoring:
+  history_z_weight: 0.5
+  peer_z_weight: 0.5
+  min_history_obs: 5      # minimum non-null own-history years for time-z to count
+  min_peer_obs: 2         # minimum non-null members in a peer-year for peer-z to count
+  trend_threshold_points: 1.5   # |1y score delta| below this renders as "stable"
+  # Trend deltas use the finest cadence the panel supports. The core series are
+  # ANNUAL, so the scoring layer emits trend_1y_delta / trend_2y_delta. When
+  # sub-annual indicators enter the panel (daily FX vol, monthly policy rates,
+  # BIS quarterly credit), the same columns report 3-month / 12-month deltas.
+
+# ---------------------------------------------------------------------------
+# Pillar weights (must sum to 1.0). Each pillar is scored 0-100 from its own
+# indicator set, then the overall composite is the weighted average of the
+# pillars that actually have data for a country-year (weights renormalized over
+# the pillars present). Political / Event Risk (GDELT) is reserved at 0.0 until
+# a defensible source is wired in — when it is, renormalize these weights.
+# ---------------------------------------------------------------------------
+pillar_weights:
+  Macro Growth & Inflation: 0.26
+  Fiscal Sustainability: 0.22
+  External Vulnerability: 0.20
+  Monetary & Currency Stability: 0.16
+  Banking & Financial Sector Health: 0.16
+
+# ---------------------------------------------------------------------------
+# Indicators. Pillar weights above set pillar-level influence; indicator
+# weights below are RELATIVE to the other indicators in the same pillar (the
+# pillar signal is renormalized over whatever is available that country-year).
+# ---------------------------------------------------------------------------
 indicators:
+  # --- Macro Growth & Inflation -------------------------------------------------
   - code: FP.CPI.TOTL.ZG
     label: Inflation
     category: Prices
-    pillar: Monetary Stability
-    weight: 0.16
+    pillar: Macro Growth & Inflation
+    weight: 0.10
     risk_direction: 1
     source: world_bank
     world_bank: FP.CPI.TOTL.ZG
@@ -18,8 +64,8 @@ indicators:
   - code: NY.GDP.MKTP.KD.ZG
     label: Real GDP growth
     category: Growth
-    pillar: Macro Growth
-    weight: 0.16
+    pillar: Macro Growth & Inflation
+    weight: 0.11
     risk_direction: -1
     source: world_bank
     world_bank: NY.GDP.MKTP.KD.ZG
@@ -34,8 +80,8 @@ indicators:
   - code: SL.UEM.TOTL.ZS
     label: Unemployment
     category: Labor
-    pillar: Macro Growth
-    weight: 0.10
+    pillar: Macro Growth & Inflation
+    weight: 0.03
     risk_direction: 1
     source: world_bank
     world_bank: SL.UEM.TOTL.ZS
@@ -47,11 +93,28 @@ indicators:
     min: 0
     max: 100
 
+  - code: OUTPUT_GAP_PROXY_PCT
+    label: Output-gap proxy
+    category: Growth
+    pillar: Macro Growth & Inflation
+    weight: 0.02
+    risk_direction: -1
+    source: derived
+    source_url: "https://data.worldbank.org/indicator/NY.GDP.MKTP.KD.ZG"
+    source_series: NY.GDP.MKTP.KD.ZG
+    frequency: annual
+    transformation: "Derived proxy: real GDP growth minus the trailing 3-year average of that country's real GDP growth. Positive = growing above recent trend (less slack); documented proxy, not an official output-gap estimate."
+    unit: "pp of GDP"
+    note: "Proxy for cyclical slack; premium on real growth versus its own recent trend."
+    min: -40
+    max: 40
+
+  # --- Fiscal Sustainability ------------------------------------------------------
   - code: GC.DOD.TOTL.GD.ZS
     label: Public debt
     category: Fiscal
     pillar: Fiscal Sustainability
-    weight: 0.18
+    weight: 0.14
     risk_direction: 1
     source: world_bank
     world_bank: GC.DOD.TOTL.GD.ZS
@@ -63,11 +126,44 @@ indicators:
     min: 0
     max: 500
 
+  - code: GC.NLD.TOTL.GD.ZS
+    label: Budget balance
+    category: Fiscal
+    pillar: Fiscal Sustainability
+    weight: 0.05
+    risk_direction: -1
+    source: world_bank
+    world_bank: GC.NLD.TOTL.GD.ZS
+    source_url: "https://data.worldbank.org/indicator/GC.NLD.TOTL.GD.ZS"
+    frequency: annual
+    transformation: "Published annual net lending (+) / net borrowing (-) as % of GDP."
+    unit: "% of GDP"
+    note: "General-government net lending/borrowing; deficits indicate financing need."
+    min: -100
+    max: 100
+
+  - code: PUBLIC_DEBT_TRAJECTORY_PCT
+    label: Public-debt trajectory
+    category: Fiscal
+    pillar: Fiscal Sustainability
+    weight: 0.03
+    risk_direction: 1
+    source: derived
+    source_url: "https://data.worldbank.org/indicator/GC.DOD.TOTL.GD.ZS"
+    source_series: GC.DOD.TOTL.GD.ZS
+    frequency: annual
+    transformation: "Derived: change in public-debt-to-GDP over the trailing 3 years. Positive = rising debt burden."
+    unit: "pp of GDP (3y change)"
+    note: "Debt trajectory, not just the debt stock; a fast-rising stock is the real signal."
+    min: -500
+    max: 500
+
+  # --- External Vulnerability ------------------------------------------------------
   - code: BN.CAB.XOKA.GD.ZS
     label: Current account balance
     category: External
     pillar: External Vulnerability
-    weight: 0.09
+    weight: 0.06
     risk_direction: -1
     source: world_bank
     world_bank: BN.CAB.XOKA.GD.ZS
@@ -83,7 +179,7 @@ indicators:
     label: FX reserves
     category: External
     pillar: External Vulnerability
-    weight: 0.10
+    weight: 0.07
     risk_direction: -1
     source: world_bank
     world_bank: FI.RES.TOTL.MO
@@ -99,7 +195,7 @@ indicators:
     label: External debt
     category: External
     pillar: External Vulnerability
-    weight: 0.09
+    weight: 0.05
     risk_direction: 1
     source: world_bank
     world_bank: DT.DOD.DECT.GN.ZS
@@ -111,27 +207,28 @@ indicators:
     min: 0
     max: 1000
 
-  - code: FB.AST.NPER.ZS
-    label: Non-performing loans
-    category: Banking
-    pillar: Banking Health
-    weight: 0.06
-    risk_direction: 1
+  - code: NE.RSB.GNFS.ZS
+    label: Trade balance
+    category: External
+    pillar: External Vulnerability
+    weight: 0.02
+    risk_direction: -1
     source: world_bank
-    world_bank: FB.AST.NPER.ZS
-    source_url: "https://data.worldbank.org/indicator/FB.AST.NPER.ZS"
+    world_bank: NE.RSB.GNFS.ZS
+    source_url: "https://data.worldbank.org/indicator/NE.RSB.GNFS.ZS"
     frequency: annual
-    transformation: "Published annual value; no additional transformation."
-    unit: "% of gross loans"
-    note: "Bank non-performing loans as a share of total gross loans."
-    min: 0
+    transformation: "Published external balance on goods and services as % of GDP."
+    unit: "% of GDP"
+    note: "Trade balance on goods and services; deficits raise external financing needs."
+    min: -100
     max: 100
 
+  # --- Monetary & Currency Stability -----------------------------------------------
   - code: FX_YOY_DEPRECIATION_PCT
     label: Currency depreciation
     category: FX
-    pillar: External Vulnerability
-    weight: 0.06
+    pillar: Monetary & Currency Stability
+    weight: 0.10
     risk_direction: 1
     source: derived
     source_url: "https://data.worldbank.org/indicator/PA.NUS.FCRF"
@@ -143,10 +240,12 @@ indicators:
     min: -100
     max: 500
 
+  # Supplementary monetary indicators (reserved, zero weight until globally
+  # comparable series are validated for all configured countries):
   - code: POLICY_RATE_YOY_CHANGE_BPS
     label: Policy-rate change
     category: Monetary
-    pillar: Monetary Stability
+    pillar: Monetary & Currency Stability
     weight: 0.00
     risk_direction: 1
     source: fred_us_only
@@ -160,11 +259,10 @@ indicators:
     min: -1000
     max: 1000
 
-  # IMF WEO indicators (supplementary — fills gaps where World Bank lags)
   - code: IMF_REAL_EFFECTIVE_EXCHANGE_RATE
     label: Real effective exchange rate
     category: FX
-    pillar: External Vulnerability
+    pillar: Monetary & Currency Stability
     weight: 0.00
     risk_direction: 1
     source: imf_ifs
@@ -177,3 +275,35 @@ indicators:
     note: "Supplementary FX indicator from IMF IFS. Not included in composite score until validated against World Bank FX depreciation."
     min: -100
     max: 100
+
+  # --- Banking & Financial Sector Health --------------------------------------------
+  - code: FB.AST.NPER.ZS
+    label: Non-performing loans
+    category: Banking
+    pillar: Banking & Financial Sector Health
+    weight: 0.10
+    risk_direction: 1
+    source: world_bank
+    world_bank: FB.AST.NPER.ZS
+    source_url: "https://data.worldbank.org/indicator/FB.AST.NPER.ZS"
+    frequency: annual
+    transformation: "Published annual value; no additional transformation."
+    unit: "% of gross loans"
+    note: "Bank non-performing loans as a share of total gross loans."
+    min: 0
+    max: 100
+
+  - code: BIS_CREDIT_GAP
+    label: Credit-to-GDP gap
+    category: Banking
+    pillar: Banking & Financial Sector Health
+    weight: 0.00
+    risk_direction: 1
+    source: bis
+    source_url: "https://www.bis.org/statistics/credit_gap.htm"
+    frequency: quarterly
+    transformation: "BIS credit-to-GDP gap (deviation of credit/GDP from its long-term trend). Positive = credit overheating."
+    unit: "pp of GDP"
+    note: "Reserved: BIS datapoint not yet wired into the collector. Zero weight until then."
+    min: -100
+    max: 200

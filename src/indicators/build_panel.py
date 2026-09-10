@@ -460,6 +460,72 @@ def _parse_fred_csv(data: Any, series_id: str, start: int, end: int) -> pd.DataF
     return annual.rename(columns={value_col: "value"})[["year", "value"]]
 
 
+LONG_COLUMNS = ["country_iso3", "indicator_code", "year", "value", "source", "flag"]
+
+
+def _series_slice(panel: pd.DataFrame, code: str) -> pd.DataFrame:
+    """Country/year/value rows for one indicator code, sorted for derivation."""
+    subset = panel[panel["indicator_code"].eq(code)][["country_iso3", "year", "value"]].copy()
+    return subset.sort_values(["country_iso3", "year"])
+
+
+def _derive_indicators(panel: pd.DataFrame) -> pd.DataFrame:
+    """Append derived indicators that reference other panel series.
+
+    OUTPUT_GAP_PROXY_PCT       : real GDP growth minus trailing 3-year own-growth
+                                 mean (a documented proxy for cyclical slack).
+    PUBLIC_DEBT_TRAJECTORY_PCT : 3-year change in the public-debt-to-GDP ratio.
+    """
+    frames = []
+
+    if "NY.GDP.MKTP.KD.ZG" in set(panel["indicator_code"]):
+        growth = _series_slice(panel, "NY.GDP.MKTP.KD.ZG")
+        growth["_mav3"] = growth.groupby("country_iso3")["value"].transform(
+            lambda s: s.rolling(3, min_periods=2).mean()
+        )
+        gap = growth.assign(value=(growth["value"] - growth["_mav3"]).round(3)).drop(columns=["_mav3"])
+        gap["indicator_code"] = "OUTPUT_GAP_PROXY_PCT"
+        gap["source"] = "Derived from World Bank NY.GDP.MKTP.KD.ZG"
+        gap["flag"] = "ok"
+        frames.append(gap[LONG_COLUMNS])
+
+    if "GC.DOD.TOTL.GD.ZS" in set(panel["indicator_code"]):
+        debt = _series_slice(panel, "GC.DOD.TOTL.GD.ZS")
+        debt["_traj"] = debt.groupby("country_iso3")["value"].diff(3)
+        traj = debt.assign(value=debt["_traj"].round(3)).drop(columns=["_traj"])
+        traj["indicator_code"] = "PUBLIC_DEBT_TRAJECTORY_PCT"
+        traj["source"] = "Derived from World Bank GC.DOD.TOTL.GD.ZS"
+        traj["flag"] = "ok"
+        frames.append(traj[LONG_COLUMNS])
+
+    if not frames:
+        return pd.DataFrame(columns=LONG_COLUMNS)
+    return pd.concat(frames, ignore_index=True)
+
+
+def _finalize_long_panel(panel: pd.DataFrame) -> pd.DataFrame:
+    """Coerce types, append derived indicators, then deduplicate and sort."""
+    if panel is None or panel.empty or "year" not in panel.columns:
+        return pd.DataFrame(columns=LONG_COLUMNS)
+
+    merged = pd.concat([panel, _derive_indicators(panel)], ignore_index=True)
+    merged["value"] = pd.to_numeric(merged["value"], errors="coerce")
+    merged["year"] = pd.to_numeric(merged["year"], errors="coerce")
+    merged = merged.dropna(subset=["year", "value"])
+    merged["year"] = merged["year"].astype(int)
+    if "flag" in merged.columns:
+        merged["flag"] = merged["flag"].fillna("ok")
+    else:
+        merged["flag"] = "ok"
+
+    return (
+        merged[LONG_COLUMNS]
+        .drop_duplicates(subset=["country_iso3", "indicator_code", "year"], keep="last")
+        .sort_values(["country_iso3", "indicator_code", "year"])
+        .reset_index(drop=True)
+    )
+
+
 def build_long_panel_batched(
     iso3_codes: Iterable[str],
     start: int,
@@ -523,18 +589,10 @@ def build_long_panel_batched(
             LOG.warning("Indicator %s failed in batched fetch: %s", code, exc)
 
     if not output:
-        return pd.DataFrame(columns=["country_iso3", "indicator_code", "year", "value", "source", "flag"]), fetch_meta
+        return pd.DataFrame(columns=LONG_COLUMNS), fetch_meta
 
     panel = pd.concat(output, ignore_index=True)
-    panel["value"] = pd.to_numeric(panel["value"], errors="coerce")
-    panel["year"] = pd.to_numeric(panel["year"], errors="coerce")
-    panel = panel.dropna(subset=["year", "value"])
-    panel["year"] = panel["year"].astype(int)
-    panel["flag"] = panel.get("flag", "ok")
-
-    return panel[["country_iso3", "indicator_code", "year", "value", "source", "flag"]].drop_duplicates(
-        subset=["country_iso3", "indicator_code", "year"], keep="last"
-    ), fetch_meta
+    return _finalize_long_panel(panel), fetch_meta
 
 
 def build_long_panel(
@@ -619,36 +677,7 @@ def build_long_panel(
                 )
 
     if not output:
-        return pd.DataFrame(
-            columns=[
-                "country_iso3",
-                "indicator_code",
-                "year",
-                "value",
-                "source",
-                "flag",
-            ]
-        )
+        return pd.DataFrame(columns=LONG_COLUMNS)
 
     panel = pd.concat(output, ignore_index=True)
-
-    panel["value"] = pd.to_numeric(panel["value"], errors="coerce")
-    panel["year"] = pd.to_numeric(panel["year"], errors="coerce")
-
-    panel = panel.dropna(subset=["year"])
-    panel["year"] = panel["year"].astype(int)
-    panel["flag"] = "ok"
-
-    return panel[
-        [
-            "country_iso3",
-            "indicator_code",
-            "year",
-            "value",
-            "source",
-            "flag",
-        ]
-    ].drop_duplicates(
-        subset=["country_iso3", "indicator_code", "year"],
-        keep="last",
-    )
+    return _finalize_long_panel(panel)

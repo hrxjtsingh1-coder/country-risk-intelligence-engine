@@ -16,10 +16,14 @@ def panel():
                 "FP.CPI.TOTL.ZG": i + y - 2020,
                 "NY.GDP.MKTP.KD.ZG": 10 - i,
                 "SL.UEM.TOTL.ZS": i + 1,
+                "OUTPUT_GAP_PROXY_PCT": i - 3,
                 "GC.DOD.TOTL.GD.ZS": 40 + i,
+                "GC.NLD.TOTL.GD.ZS": -2 - i,
+                "PUBLIC_DEBT_TRAJECTORY_PCT": i * 0.5,
                 "BN.CAB.XOKA.GD.ZS": -i,
                 "FI.RES.TOTL.MO": 8 - i / 5,
                 "DT.DOD.DECT.GN.ZS": 20 + i,
+                "NE.RSB.GNFS.ZS": 2 - i,
                 "FB.AST.NPER.ZS": 1 + i / 10,
                 "FX_YOY_DEPRECIATION_PCT": i,
                 "POLICY_RATE_YOY_CHANGE_BPS": i * 10,
@@ -33,8 +37,11 @@ def panel():
 def test_score_completeness_is_fraction_and_risk_direction():
     scores, drivers, _ = score_panel(panel())
     assert scores["data_completeness"].eq(1.0).all()
-    debt = drivers[drivers.indicator_code.eq("GC.DOD.TOTL.GD.ZS")]
-    assert debt.sort_values("raw_value").weighted_contribution.is_monotonic_increasing
+    # Within a single peer group, higher raw_value should yield higher risk contribution
+    advanced = drivers[
+        drivers.indicator_code.eq("GC.DOD.TOTL.GD.ZS") & drivers.country_iso3.isin(["USA", "CAN", "DEU"])
+    ]
+    assert advanced.sort_values("raw_value").weighted_contribution.is_monotonic_increasing
 
 
 def test_score_missing_data_reduces_completeness():
