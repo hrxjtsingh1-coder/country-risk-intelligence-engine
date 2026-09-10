@@ -86,6 +86,24 @@ def render_scenario_laboratory(ctx: Context) -> None:
         user_error("The scenario engine could not complete this run.", scenario_error)
 
     if scenario is not None:
+        narrative = ""
+        if isinstance(scenario, dict):
+            narrative = str(scenario.get("narrative", ""))
+
+        if narrative:
+            st.markdown(
+                f"""
+                <div class="card">
+                    <div class="card-label">ENGINE NARRATIVE</div>
+                    <div style="margin-top:13px;color:#bdc8d6;font-size:13px;line-height:1.75;">
+                        {esc(narrative)}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.markdown("<br>", unsafe_allow_html=True)
+
         sc1, sc2, sc3 = st.columns(3)
 
         scenario_baseline = None

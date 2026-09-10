@@ -92,6 +92,26 @@ def shock_preset(name: str) -> dict:
     return dict(SHOCK_LIBRARY[name])
 
 
+DRIVER_LABELS: dict[str, str] = {
+    "POLICY_RATE_YOY_CHANGE_BPS": "policy-rate",
+    "NY.GDP.MKTP.KD.ZG": "real-GDP-growth",
+    "FX_YOY_DEPRECIATION_PCT": "currency-depreciation",
+    "COMMODITY_PRICE_INDEX_PCT": "commodity-price",
+    "BIS_CREDIT_GAP": "credit-to-GDP-gap",
+}
+
+
+def _driver_label(driver_code: str) -> str:
+    return DRIVER_LABELS.get(str(driver_code), str(driver_code))
+
+
+def _shock_unit(driver_code: str) -> str:
+    for preset in SHOCK_LIBRARY.values():
+        if preset["driver_code"] == driver_code:
+            return str(preset["display_unit"])
+    return "bps"
+
+
 def _ols(x: pd.Series, y: pd.Series) -> tuple[float, float, int, float, float]:
     data = pd.DataFrame({"x": x, "y": y}).replace([np.inf, -np.inf], np.nan).dropna()
 
@@ -274,6 +294,35 @@ def run_shock_scenario(
     out_of_sample = bool(
         not observed_driver.empty and (shocked_driver < observed_driver.min() or shocked_driver > observed_driver.max())
     )
+
+    delta = scenario_score - baseline_score
+    estimation_window = (
+        f"{int(pd.to_numeric(panel['year'], errors='coerce').min())}–"
+        f"{int(pd.to_numeric(panel['year'], errors='coerce').max())}"
+    )
+    information_assessment = _information_assessment(target_deltas)
+
+    scenario_label = preset_name or "Custom"
+    if delta > 0:
+        direction = "elevated risk"
+    elif delta < 0:
+        direction = "moderated risk"
+    else:
+        direction = "unchanged risk"
+
+    shock_phrase = f"{abs(float(shock_amount)):g} {_shock_unit(driver_code)}"
+    narrative = (
+        f"{scenario_label} shock: a {shock_phrase} change in the {_driver_label(driver_code)} "
+        f"({driver_code}) moves {country_iso3}'s risk score from {baseline_score:.1f} "
+        f"({baseline_band}) to {scenario_score:.1f} ({scenario_band}) — a {abs(delta):.1f}-point "
+        f"move indicating {direction}. Estimation: pooled-panel bivariate OLS on "
+        f"the {estimation_window} sample; {information_assessment.lower()}."
+    )
+    if out_of_sample:
+        narrative += (
+            " The chosen shock sits outside the observed historical range of the driver and is an extrapolation."
+        )
+
     return {
         "preset": preset_name,
         "driver_code": driver_code,
@@ -282,12 +331,13 @@ def run_shock_scenario(
         "baseline_band": baseline_band,
         "scenario_score": scenario_score,
         "scenario_band": scenario_band,
-        "delta": scenario_score - baseline_score,
+        "delta": delta,
         "indicator_deltas": target_deltas,
         "baseline_driver_value": baseline_driver,
         "shocked_driver_value": shocked_driver,
-        "estimation_window": f"{int(pd.to_numeric(panel['year'], errors='coerce').min())}–{int(pd.to_numeric(panel['year'], errors='coerce').max())}",
+        "estimation_window": estimation_window,
         "model_specification": "Pooled-panel bivariate OLS: target = alpha + beta × shock driver; no causal controls or lags.",
-        "information_assessment": _information_assessment(target_deltas),
+        "information_assessment": information_assessment,
         "out_of_sample_shock": out_of_sample,
+        "narrative": narrative,
     }

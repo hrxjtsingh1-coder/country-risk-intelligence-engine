@@ -150,6 +150,21 @@ def test_scenario_runs_predefined_rate_preset():
     }
 
 
+def test_scenario_returns_engine_level_narrative():
+    result = run_shock_scenario(panel(), "USA", 2025, preset="rate_hike")
+    narrative = result["narrative"]
+    assert isinstance(narrative, str) and "\n" not in narrative
+    assert "Rate shock (+100bps)" in narrative
+    assert "100 bps" in narrative
+    assert "USA's risk score" in narrative
+
+    in_sample = run_shock_scenario(panel(), "USA", 2025, "POLICY_RATE_YOY_CHANGE_BPS", 10, ["NY.GDP.MKTP.KD.ZG"])
+    assert "extrapolation" not in in_sample["narrative"]
+
+    big = run_shock_scenario(panel(), "USA", 2025, "POLICY_RATE_YOY_CHANGE_BPS", 10000, ["NY.GDP.MKTP.KD.ZG"])
+    assert "extrapolation" in big["narrative"]
+
+
 def test_scenario_preset_gaps_driver_not_in_panel():
     data = panel()
     data["COMMODITY_PRICE_INDEX_PCT"] = 100.0
