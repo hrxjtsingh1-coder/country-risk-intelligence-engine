@@ -15,6 +15,8 @@ scenario_result.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 import pandas as pd
 
 DIRECTION_PHRASE = {
@@ -85,11 +87,18 @@ def generate_report(
     scenario_result: dict | None = None,
     peer_group: list[str] | None = None,
     n_drivers: int = 3,
+    sources: list[str] | None = None,
+    generated_at: str | None = None,
 ) -> str:
     """
     Build the full analyst-style text block for one country-year.
     Returns a plain-text string; the Streamlit dashboard renders it as
     markdown (the section headers below are already markdown-ready).
+
+    `sources` should list the primary-data source labels (e.g. from
+    config/indicators.yaml) so the write-up stays traceable; if omitted a
+    pointer to that config file is used. `generated_at` pins the timestamp so
+    tests stay deterministic; it defaults to the current time.
     """
     row = scores[(scores["country_iso3"] == country_iso3) & (scores["year"] == year)]
     if row.empty or pd.isna(row.iloc[0]["risk_score"]):
@@ -130,6 +139,11 @@ def generate_report(
         "",
         "**Limitations:**",
         _limitations(completeness),
+        "",
+        "**Confidence:**",
+        _confidence_section(completeness, scenario_result),
+        "",
+        _sources_section(sources, generated_at),
     ]
     return "\n".join(lines)
 
@@ -211,6 +225,43 @@ def _limitations(completeness: float) -> str:
             "treat this score with extra caution relative to a fully-populated one.",
         )
     return "\n".join(f"- {b}" for b in base)
+
+
+def _confidence_section(completeness: float, scenario_result: dict | None) -> str:
+    """Data-quality confidence flag, deliberately not statistical significance."""
+    if completeness >= 0.95:
+        data_label = "High coverage"
+        level = "HIGH"
+    elif completeness >= 0.7:
+        data_label = "Moderate coverage"
+        level = "MODERATE"
+    else:
+        data_label = "Partial coverage"
+        level = "LOW"
+
+    notes = [f"Data: {data_label} for this country-year ({completeness * 100:.0f}% of indicator weight populated)."]
+
+    if scenario_result:
+        info = scenario_result.get("information_assessment")
+        if info:
+            notes.append(f"Scenario estimate: {info}.")
+            if info in {"LOW INFORMATION", "INSUFFICIENT DATA"} and level != "LOW":
+                level = "MODERATE" if level == "HIGH" else "LOW"
+                notes.append("The scenario impact should be read with extra caution.")
+        if scenario_result.get("out_of_sample_shock"):
+            notes.append("The scenario shock exceeds the observed driver range (extrapolation).")
+
+    header = f"Confidence: {level} — a data-quality flag, not a statistical confidence interval."
+    return "\n".join([header] + [f"- {n}" for n in notes])
+
+
+def _sources_section(sources: list[str] | None, generated_at: str | None) -> str:
+    generated_at = generated_at or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    if sources:
+        listed = "\n".join(f"- {s}" for s in sources)
+    else:
+        listed = "- See config/indicators.yaml for the per-indicator source mapping."
+    return "\n".join(["**Sources:**", listed, "", f"Generated: {generated_at}"])
 
 
 if __name__ == "__main__":

@@ -442,6 +442,25 @@ peer_group = next(
     None,
 )
 
+source_by_code = {}
+for indicator in indicators_cfg.get("indicators", []) if isinstance(indicators_cfg, dict) else []:
+    if isinstance(indicator, dict) and indicator.get("code"):
+        source_by_code[str(indicator["code"])] = str(indicator.get("source", ""))
+
+_report_sources = None
+if (
+    isinstance(country_drivers, pd.DataFrame)
+    and not country_drivers.empty
+    and "indicator_code" in country_drivers.columns
+):
+    _report_sources = sorted(
+        {s for c in country_drivers["indicator_code"] for s in [source_by_code.get(str(c), str(c))]}
+    )
+    if not _report_sources:
+        _report_sources = None
+
+generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
 report = generate_report(
     country_name=get_country_label(country),
     country_iso3=country,
@@ -450,6 +469,8 @@ report = generate_report(
     drivers=drivers,
     scenario_result=scenario_result,
     peer_group=[c for c in (peer_group or []) if c != country],
+    sources=_report_sources,
+    generated_at=generated_at,
 )
 
 
@@ -461,8 +482,6 @@ report = generate_report(
 # No navigation/routing yet — a later pass introduces the page structure
 # (map, country deep-dive, comparison, scenario simulator, methodology).
 # ============================================================================
-
-generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 ctx = Context(
     panel=panel,
