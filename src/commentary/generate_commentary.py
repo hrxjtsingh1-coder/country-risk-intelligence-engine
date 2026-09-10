@@ -193,6 +193,10 @@ def _limitations(completeness: float) -> str:
         "Each indicator is z-scored against both the country's own history (time dimension, minimum five years) "
         "and its peer group in the same year (cross-sectional dimension), then blended — a side with too few "
         "observations is dropped so the other carries the full weight rather than forcing garbage into the blend.",
+        "The composite is a weighted blend of the pillar-level view and a sector-level aggregate "
+        "(pillars grouped into sectors such as Macro & Fiscal and Financial & External); the sector "
+        "share and the sector weights are configurable, so this score is best treated as one consistent "
+        "methodology across countries rather than a fixed, undisclosed proprietary index.",
         "Scenario elasticities are pooled-panel OLS correlations, not a causal or structural model — "
         "they ignore lags, expectations effects, and country-specific transmission channels.",
         "Several indicators (e.g. external debt, credit-to-GDP gap) are only reported by their source for a subset "

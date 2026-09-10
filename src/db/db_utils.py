@@ -54,7 +54,10 @@ def load_indicator_values(conn: sqlite3.Connection, df_long: pd.DataFrame) -> No
 
 
 def load_scores(conn: sqlite3.Connection, scores: pd.DataFrame, drivers: pd.DataFrame) -> None:
-    scores[["country_iso3", "year", "risk_score", "risk_band", "data_completeness"]].to_sql(
+    score_cols = ["country_iso3", "year", "risk_score", "risk_band", "data_completeness"]
+    if "sector_score" in scores.columns:
+        score_cols.append("sector_score")
+    scores[[c for c in score_cols if c in scores.columns]].to_sql(
         "risk_scores", conn, if_exists="append", index=False, method="multi", chunksize=500
     )
     driver_cols = [

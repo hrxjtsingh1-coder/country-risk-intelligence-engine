@@ -19,10 +19,35 @@ scoring:
   min_history_obs: 5      # minimum non-null own-history years for time-z to count
   min_peer_obs: 2         # minimum non-null members in a peer-year for peer-z to count
   trend_threshold_points: 1.5   # |1y score delta| below this renders as "stable"
+  # Sector aggregate weight (0.0-1.0). The composite is a blend:
+  #   composite = (1 - w) * pillar_weighted_composite + w * sector_score
+  # At 0.0 the composite is purely pillar-driven (Phase 4 behavior); at 1.0 it
+  # is purely sector-driven. The sector_score itself is a renormalized weighted
+  # average of the pillar scores inside each configured sector.
+  sector_composite_weight: 0.30
   # Trend deltas use the finest cadence the panel supports. The core series are
   # ANNUAL, so the scoring layer emits trend_1y_delta / trend_2y_delta. When
   # sub-annual indicators enter the panel (daily FX vol, monthly policy rates,
   # BIS quarterly credit), the same columns report 3-month / 12-month deltas.
+
+# ---------------------------------------------------------------------------
+# Sector weights (a sector is a "super-pillar" grouping of pillars; the sector
+# score is the renormalized weighted average of its pillars' scores). Sector
+# weights must sum to 1.0, every active pillar must belong to exactly one
+# sector, and each sector must list at least one pillar.
+# ---------------------------------------------------------------------------
+sector_weights:
+  Macro & Fiscal Sector: 0.55
+  Financial & External Sector: 0.45
+
+sectors:
+  Macro & Fiscal Sector:
+    - Macro Growth & Inflation
+    - Fiscal Sustainability
+  Financial & External Sector:
+    - External Vulnerability
+    - Monetary & Currency Stability
+    - Banking & Financial Sector Health
 
 # ---------------------------------------------------------------------------
 # Pillar weights (must sum to 1.0). Each pillar is scored 0-100 from its own

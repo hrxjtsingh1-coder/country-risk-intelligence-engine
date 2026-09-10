@@ -14,9 +14,12 @@ Method:
    indicator's (intra-pillar relative) weight.
 4. Score each pillar 0-100 from its own indicator set, renormalized over what
    is actually available for that country-year.
-5. Combine pillars into a 0-100 composite as the weighted average of pillar
-   scores, with pillar weights renormalized over the pillars that had data.
-6. Emit trend deltas (vs 1 and 2 periods behind, finest cadence the panel
+5. Optionally group pillars into sectors (a "super-pillar" layer) and score
+   each sector 0-100 as the renormalized weighted average of its pillars.
+6. Combine everything into a 0-100 composite: the sector score (when enabled)
+   is blended into the pillar-weighted composite by `sector_composite_weight`,
+   with both sides' weights renormalized over whatever had data.
+7. Emit trend deltas (vs 1 and 2 periods behind, finest cadence the panel
    supports) so a user can say "deteriorating" or "improving", and carry the
    z components on every driver row so a score can always be explained.
 
@@ -52,6 +55,7 @@ DEFAULT_SCORING: dict[str, float] = {
     "min_history_obs": 5.0,
     "min_peer_obs": 2.0,
     "trend_threshold_points": 1.5,
+    "sector_composite_weight": 0.0,
 }
 
 
@@ -109,6 +113,77 @@ def _load_peer_groups() -> dict[str, str]:
     return mapping
 
 
+def _load_sectors() -> tuple[dict[str, float], dict[str, list[str]]]:
+    """Return (sector_name -> weight, sector_name -> list of pillar names).
+
+    Sectors are the optional "super-pillar" layer: each sector groups one or
+    more pillars, and the sector score is the renormalized weighted average of
+    those pillars' scores. The composite blends the pillar-weighted composite
+    with the sector_score by `sector_composite_weight`. An empty result means
+    sectors are deactivated (pure pillar-driven composite).
+    """
+    cfg = _load_config()
+    if not isinstance(cfg, dict):
+        return {}, {}
+
+    weights_cfg = cfg.get("sector_weights", {})
+    members_cfg = cfg.get("sectors", {})
+    if not isinstance(weights_cfg, dict) and not isinstance(members_cfg, dict):
+        return {}, {}
+
+    sector_weights: dict[str, float] = {}
+    sectors: dict[str, list[str]] = {}
+    for name, members in members_cfg.items():
+        sector_name = str(name)
+        sectors[sector_name] = [str(m) for m in members] if isinstance(members, list) else []
+    for name, weight in weights_cfg.items():
+        sector_weights[str(name)] = float(weight)
+
+    if not sectors and not sector_weights:
+        return {}, {}
+
+    _validate_sectors(sector_weights, sectors, _load_pillar_weights())
+    return sector_weights, sectors
+
+
+def _validate_sectors(
+    sector_weights: dict[str, float],
+    sectors: dict[str, list[str]],
+    pillar_w: dict[str, float],
+) -> None:
+    """Fail fast on a misconfigured sectors block."""
+    known_pillars = set(PILLAR_ORDER)
+    pillar_names = {p for p, w in pillar_w.items() if w > 0}
+
+    if not sector_weights or not sectors:
+        raise ValueError("sector_weights and sectors must both be defined to activate sectors.")
+
+    if not np.isclose(sum(sector_weights.values()), 1.0):
+        raise ValueError(f"Configured sector weights must sum to 1.0 (got {sum(sector_weights.values()):.4f}).")
+    if set(sector_weights) != set(sectors):
+        raise ValueError("sector_weights and sectors must define the same sector names.")
+
+    covered: list[str] = []
+    for sector_name, members in sectors.items():
+        if sector_weights.get(sector_name, 0.0) <= 0:
+            raise ValueError(f"Sector '{sector_name}' must carry positive weight.")
+        if not members:
+            raise ValueError(f"Sector '{sector_name}' must list at least one pillar.")
+        unknown = [m for m in members if m not in known_pillars]
+        if unknown:
+            raise ValueError(f"Sector '{sector_name}' lists unknown pillar(s): {', '.join(unknown)}")
+        covered.extend(members)
+
+    missing = sorted(pillar_names - set(covered))
+    if missing:
+        raise ValueError(
+            "Every active pillar must belong to exactly one sector; missing pillar(s): " + ", ".join(missing)
+        )
+    duplicated = sorted({m for m in covered if covered.count(m) > 1})
+    if duplicated:
+        raise ValueError(f"Pillar(s) assigned to more than one sector: {', '.join(duplicated)}")
+
+
 def _band(score: float) -> str:
     if score < 20:
         return "Low"
@@ -152,6 +227,7 @@ def _empty_frames():
             "trend_1y_delta",
             "trend_2y_delta",
             "trend_direction",
+            "sector_score",
         ]
     )
     drivers = pd.DataFrame(
@@ -270,13 +346,27 @@ def score_panel(panel: pd.DataFrame):
 
     pillar_scores = _compute_pillar_scores(drivers, pillar_w, group_keys)
 
-    merged_composite = _composite_from_pillars(pillar_scores, pillar_w, working)
-    composite = merged_composite["composite"]
+    pillar_composite = _composite_from_pillars(pillar_scores, pillar_w, working)["composite"]
+
+    sector_weights, sectors = _load_sectors()
+    sector_scores_df = pd.DataFrame(
+        columns=["country_iso3", "year", "sector", "sector_score", "sector_band", "sector_weight"]
+    )
+    if sectors:
+        sector_scores_df = _compute_sector_scores(pillar_scores, sector_weights, sectors, group_keys)
+    aggregate_sector_score = _aggregate_sector_score(sector_scores_df, sector_weights, working)
+
+    sector_beta = float(scoring["sector_composite_weight"])
+    if aggregate_sector_score.notna().any():
+        composite = (1.0 - sector_beta) * pillar_composite + sector_beta * aggregate_sector_score
+    else:
+        composite = pillar_composite
 
     scores = working[["country_iso3", "year"]].copy()
     scores["risk_score"] = composite
     scores["risk_band"] = scores["risk_score"].map(_band)
     scores["data_completeness"] = completeness
+    scores["sector_score"] = aggregate_sector_score
     scores = _add_trend_deltas(scores, scoring)
 
     if not pillar_scores.empty:
@@ -288,6 +378,16 @@ def score_panel(panel: pd.DataFrame):
             if ps.empty:
                 continue
             scores = scores.merge(ps, on=["country_iso3", "year"], how="left")
+
+    if not sector_scores_df.empty:
+        for sector_name in sectors:
+            col = f"sector_{_pillar_slug(sector_name)}_score"
+            ss = sector_scores_df[sector_scores_df["sector"] == sector_name][
+                ["country_iso3", "year", "sector_score"]
+            ].rename(columns={"sector_score": col})
+            if ss.empty:
+                continue
+            scores = scores.merge(ss, on=["country_iso3", "year"], how="left")
 
     scores = (
         scores.drop_duplicates(["country_iso3", "year"]).sort_values(["country_iso3", "year"]).reset_index(drop=True)
@@ -382,6 +482,75 @@ def _compute_pillar_scores(
         return pd.DataFrame(columns=["country_iso3", "year", "pillar", "pillar_score", "pillar_band", "pillar_weight"])
 
     return pd.concat(rows, ignore_index=True).sort_values(group_keys + ["pillar"])
+
+
+def _compute_sector_scores(
+    pillar_scores: pd.DataFrame,
+    sector_weights: dict[str, float],
+    sectors: dict[str, list[str]],
+    group_keys: list[str],
+) -> pd.DataFrame:
+    """Compute a 0-100 score for each sector (a weighted avg of its pillar scores)."""
+    rows = []
+
+    for sector_name, members in sectors.items():
+        if sector_weights.get(sector_name, 0.0) <= 0:
+            continue
+
+        member = pillar_scores[pillar_scores["pillar"].isin(members)].copy()
+        member = member.dropna(subset=["pillar_score"])
+        if member.empty:
+            continue
+
+        agg = (
+            member.assign(_contrib=member["pillar_score"] * member["pillar_weight"])
+            .groupby(group_keys, as_index=False)
+            .agg(contribution=("_contrib", "sum"), weight=("pillar_weight", "sum"))
+        )
+        agg = agg[agg["weight"] > 0].copy()
+        if agg.empty:
+            continue
+
+        agg["sector"] = sector_name
+        agg["sector_score"] = agg["contribution"] / agg["weight"]
+        agg["sector_band"] = agg["sector_score"].map(_band)
+        agg["sector_weight"] = sector_weights.get(sector_name, 0.0)
+
+        rows.append(agg[[*group_keys, "sector", "sector_score", "sector_band", "sector_weight"]])
+
+    if not rows:
+        return pd.DataFrame(columns=["country_iso3", "year", "sector", "sector_score", "sector_band", "sector_weight"])
+
+    return pd.concat(rows, ignore_index=True).sort_values(group_keys + ["sector"])
+
+
+def _aggregate_sector_score(
+    sector_scores_df: pd.DataFrame,
+    sector_weights: dict[str, float],
+    working: pd.DataFrame,
+) -> pd.Series:
+    """Combine per-sector scores into one 0-100 sector_score per country-year."""
+    keys = working[["country_iso3", "year"]].copy()
+
+    if sector_scores_df.empty or not sector_weights:
+        keys["sector_score"] = np.nan
+        return keys["sector_score"]
+
+    ss = sector_scores_df.dropna(subset=["sector_score"])[["country_iso3", "year", "sector", "sector_score"]].copy()
+    if ss.empty:
+        keys["sector_score"] = np.nan
+        return keys["sector_score"]
+
+    ss["_w"] = ss["sector"].map(sector_weights).fillna(0.0)
+    agg = (
+        ss.assign(_contrib=ss["sector_score"] * ss["_w"])
+        .groupby(["country_iso3", "year"], as_index=False)
+        .agg(contribution=("_contrib", "sum"), weight=("_w", "sum"))
+    )
+    agg["sector_score"] = agg["contribution"] / agg["weight"].replace(0, np.nan)
+
+    merged = keys.merge(agg[["country_iso3", "year", "sector_score"]], on=["country_iso3", "year"], how="left")
+    return merged["sector_score"]
 
 
 def _add_trend_deltas(scores: pd.DataFrame, scoring: dict[str, float]) -> pd.DataFrame:

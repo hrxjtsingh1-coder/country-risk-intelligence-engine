@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS risk_scores (
     risk_score        REAL,
     risk_band         TEXT,
     data_completeness REAL,            -- fraction of indicator weight populated for this row
+    sector_score      REAL,            -- 0-100 sector (super-pillar) aggregate, blended into risk_score
     computed_at       TEXT DEFAULT (datetime('now')),
     PRIMARY KEY (country_iso3, year)
 );

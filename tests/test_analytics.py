@@ -1,9 +1,11 @@
 from pathlib import Path
 
 import pandas as pd
+import yaml
 
 from src.cleaning.clean import clean_long_panel
 from src.scenario.scenario_engine import run_shock_scenario
+from src.scoring import risk_score as rs
 from src.scoring.risk_score import score_panel
 
 
@@ -49,6 +51,45 @@ def test_score_missing_data_reduces_completeness():
     data.loc[0, "FP.CPI.TOTL.ZG"] = None
     scores, _, _ = score_panel(data)
     assert scores.loc[(scores.country_iso3 == "USA") & (scores.year == 2020), "data_completeness"].iloc[0] < 1
+
+
+def _config_with_sector_weight(tmp_path, monkeypatch, sector_composite_weight):
+    with open(rs.CONFIG_PATH, encoding="utf-8") as f:
+        cfg = yaml.safe_load(f) or {}
+    cfg.setdefault("scoring", {})["sector_composite_weight"] = sector_composite_weight
+    config_path = tmp_path / "indicators.yaml"
+    config_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    monkeypatch.setattr(rs, "CONFIG_PATH", config_path)
+
+
+def test_sector_score_columns_present_and_in_range():
+    scores, _, _ = score_panel(panel())
+    assert "sector_score" in scores.columns
+    assert "sector_macro_fiscal_sector_score" in scores.columns
+    assert "sector_financial_external_sector_score" in scores.columns
+    assert scores["sector_score"].between(0, 100).all()
+    assert scores["sector_score"].notna().all()
+
+
+def test_composite_blends_sector_score_with_configurable_weight(tmp_path, monkeypatch):
+    _config_with_sector_weight(tmp_path, monkeypatch, 0.0)
+    scores_pure_pillar, _, _ = score_panel(panel())
+
+    _config_with_sector_weight(tmp_path, monkeypatch, 1.0)
+    scores_sector_only, _, _ = score_panel(panel())
+    assert scores_sector_only["risk_score"].round(6).eq(scores_sector_only["sector_score"].round(6)).all()
+
+    _config_with_sector_weight(tmp_path, monkeypatch, 0.5)
+    scores_blended, _, _ = score_panel(panel())
+    blended = scores_blended.set_index(["country_iso3", "year"])["risk_score"]
+    lo = scores_pure_pillar.set_index(["country_iso3", "year"])["risk_score"]
+    hi = scores_sector_only.set_index(["country_iso3", "year"])["risk_score"]
+    lower = pd.concat([lo, hi], axis=1).min(axis=1)
+    upper = pd.concat([lo, hi], axis=1).max(axis=1)
+    assert (blended >= lower).all()
+    assert (blended <= upper).all()
+    assert not blended.round(6).eq(lo.round(6)).all()
+    assert not blended.round(6).eq(hi.round(6)).all()
 
 
 def test_duplicate_cleaning_and_range_flag():
