@@ -5,3 +5,5 @@ plotly>=5.20,<7
 PyYAML>=6.0,<7
 requests>=2.31,<3
 reportlab>=4.0,<5
+fastapi>=0.110,<1
+uvicorn>=0.27,<1
