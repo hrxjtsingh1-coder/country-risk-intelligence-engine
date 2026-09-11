@@ -1,0 +1,118 @@
+# Reference-only sovereign rating snapshot (long-term foreign-currency issuer
+# ratings) used to sanity-check the engine against real rating agencies.
+#
+# LABELED REFERENCE ONLY: these are not current investment advice and are not
+# part of the scoring pipeline. They are a static, dated snapshot of publicly
+# reported ratings used purely to see how the model's ordering compares with
+# agency views. The engine does not optimize toward these numbers.
+asof: "2024Q1 reference snapshot"
+agencies:
+  - { code: "S&P", name: "S&P" }
+  - { code: "Moody's", name: "Moody's" }
+  - { code: "Fitch", name: "Fitch" }
+entries:
+  - country: USA
+    iso3: USA
+    S&P: "AA+"
+    Moody's: "Aaa"
+    Fitch: "AA+"
+  - country: Canada
+    iso3: CAN
+    S&P: "AAA"
+    Moody's: "Aaa"
+    Fitch: "AAA"
+  - country: Germany
+    iso3: DEU
+    S&P: "AAA"
+    Moody's: "Aaa"
+    Fitch: "AAA"
+  - country: Netherlands
+    iso3: NLD
+    S&P: "AAA"
+    Moody's: "Aaa"
+    Fitch: "AAA"
+  - country: Australia
+    iso3: AUS
+    S&P: "AAA"
+    Moody's: "Aaa"
+    Fitch: "AAA"
+  - country: Singapore
+    iso3: SGP
+    S&P: "AAA"
+    Moody's: "Aaa"
+    Fitch: "AAA"
+  - country: Switzerland
+    iso3: CHE
+    S&P: "AAA"
+    Moody's: "Aaa"
+    Fitch: "AAA"
+  - country: Korea
+    iso3: KOR
+    S&P: "AA"
+    Moody's: "Aa2"
+    Fitch: "AA"
+  - country: China
+    iso3: CHN
+    S&P: "A+"
+    Moody's: "A1"
+    Fitch: "A+"
+  - country: Japan
+    iso3: JPN
+    S&P: "A+"
+    Moody's: "A1"
+    Fitch: "A"
+  - country: France
+    iso3: FRA
+    S&P: "AA"
+    Moody's: "Aa2"
+    Fitch: "AA-"
+  - country: United Kingdom
+    iso3: GBR
+    S&P: "AA"
+    Moody's: "Aa3"
+    Fitch: "AA-"
+  - country: Poland
+    iso3: POL
+    S&P: "A-"
+    Moody's: "A2"
+    Fitch: "A"
+  - country: Spain
+    iso3: ESP
+    S&P: "A"
+    Moody's: "A2"
+    Fitch: "A-"
+  - country: Indonesia
+    iso3: IDN
+    S&P: "BBB"
+    Moody's: "Baa2"
+    Fitch: "BBB"
+  - country: Mexico
+    iso3: MEX
+    S&P: "BBB"
+    Moody's: "Baa2"
+    Fitch: "BBB"
+  - country: India
+    iso3: IND
+    S&P: "BBB-"
+    Moody's: "Baa3"
+    Fitch: "BBB-"
+  - country: Italy
+    iso3: ITA
+    S&P: "BBB"
+    Moody's: "Baa3"
+    Fitch: "BBB"
+  - country: Brazil
+    iso3: BRA
+    S&P: "BB"
+    Moody's: "Ba1"
+    Fitch: "BB"
+  - country: South Africa
+    iso3: ZAF
+    S&P: "BB-"
+    Moody's: "Ba2"
+    Fitch: "BB-"
+  - country: Turkiye
+    iso3: TUR
+    S&P: "B"
+    Moody's: "B1"
+    Fitch: "B+"

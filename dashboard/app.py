@@ -44,6 +44,7 @@ if str(ROOT) not in sys.path:
 from dashboard import ui  # noqa: E402
 from dashboard.context import Context  # noqa: E402
 from dashboard.sections import about as about_section  # noqa: E402
+from dashboard.sections import benchmark as benchmark_section  # noqa: E402
 from dashboard.sections import comparison as comparison_section  # noqa: E402
 from dashboard.sections import contagion as contagion_section  # noqa: E402
 from dashboard.sections import country as country_section  # noqa: E402
@@ -595,6 +596,7 @@ _RENDER_SECTIONS = [
     scenario_section.render_scenario_laboratory,
     country_section.render_resilience,
     country_section.render_analyst_intelligence,
+    benchmark_section.render_agency_benchmark,
     pdf_export_section.render_pdf_export,
     methodology_section.render_model_card,
     country_section.render_data_coverage,

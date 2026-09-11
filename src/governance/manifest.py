@@ -52,6 +52,7 @@ DEFAULT_INPUTS = [
     ROOT / "config" / "indicators.yaml",
     ROOT / "config" / "countries.yaml",
     ROOT / "config" / "episodes.yaml",
+    ROOT / "config" / "agency_ratings.yaml",
 ]
 DEFAULT_FIXTURES = [ROOT / "data" / "demo" / "panel_wide.csv"]
 DEFAULT_OUTPUTS = [
