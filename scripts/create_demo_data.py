@@ -14,7 +14,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from src.indicators.build_panel import _derive_indicators, LONG_COLUMNS
+from src.indicators.build_panel import LONG_COLUMNS, _derive_indicators
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_PATH = ROOT / "data" / "processed" / "panel_wide.csv"
@@ -23,7 +23,7 @@ OUTPUT_PATH = ROOT / "data" / "processed" / "panel_wide.csv"
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--countries", default=None, help="Comma-separated ISO3 codes")
-    parser.add_argument("--start", type=int, default=2015)
+    parser.add_argument("--start", type=int, default=1990)
     parser.add_argument("--end", type=int, default=2025)
     parser.add_argument(
         "--output",

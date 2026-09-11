@@ -47,6 +47,9 @@ IMF_COUNTRY_MAP: dict[str, str] = {
     "IDN": "ID",
     "TUR": "TR",
     "POL": "PL",
+    "ARG": "AR",
+    "GRC": "GR",
+    "RUS": "RU",
 }
 
 

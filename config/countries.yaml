@@ -14,6 +14,11 @@ countries:
     region: Europe
     income: High income
     monetary_union: null
+  - iso3: GRC
+    name: Greece
+    region: Europe
+    income: High income
+    monetary_union: EUR
   - iso3: DEU
     name: Germany
     region: Europe
@@ -53,6 +58,11 @@ countries:
     name: Korea, Rep.
     region: East Asia & Pacific
     income: High income
+    monetary_union: null
+  - iso3: ARG
+    name: Argentina
+    region: Latin America & Caribbean
+    income: Upper middle income
     monetary_union: null
   - iso3: AUS
     name: Australia
@@ -95,6 +105,11 @@ countries:
     region: Europe
     income: High income
     monetary_union: EUR
+  - iso3: RUS
+    name: Russia
+    region: Europe & Central Asia
+    income: Upper middle income
+    monetary_union: null
   - iso3: SGP
     name: Singapore
     region: East Asia & Pacific
@@ -115,6 +130,7 @@ peer_groups:
     - AUS
     - NLD
     - SGP
+    - GRC
   emerging:
     - IND
     - CHN
@@ -124,3 +140,5 @@ peer_groups:
     - IDN
     - TUR
     - POL
+    - ARG
+    - RUS

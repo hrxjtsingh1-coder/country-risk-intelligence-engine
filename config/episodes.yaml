@@ -12,9 +12,11 @@
 #   required to count as "flagged". Rises below this are treated as noise.
 # Per-episode `window_years` / `pass_threshold_points` override the defaults.
 #
-# Episodes are countries already in config/countries.yaml with years inside
-# the standard live-fetch window (2012+), so they evaluate real data
-# automatically once live World Bank data is loaded — no extra step required.
+# This is a deliberately broad set spanning the 1990s Asian crisis through the
+# 2008 GFC, the eurozone crisis, and recent emerging-market currency shocks.
+# The panel being scored must cover all baseline and event years for an episode
+# to be evaluable — the committed demo fixture spans 1990-2025, so every
+# episode below is in range once that window is loaded.
 
 detection_window_years: 1
 pass_threshold_points: 3.0
@@ -55,3 +57,120 @@ episodes:
       September 2022's unfunded fiscal package triggered a sharp gilt
       sell-off and sterling depreciation, on top of the UK's post-2020
       inflation and current-account pressures.
+
+  - iso3: TUR
+    label: Turkiye — 2021 lira crash
+    baseline_year: 2019
+    event_year: 2021
+    note: >-
+      The lira lost roughly half its value against the US dollar in 2021 as
+      unconventional monetary easing, double-digit inflation, and eroding
+      central-bank credibility combined into a full currency crisis.
+
+  - iso3: CHN
+    label: China — 2015 equity and RMB turbulence
+    baseline_year: 2013
+    event_year: 2015
+    note: >-
+      The summer-2015 equity crash and the surprise August devaluation of the
+      renminbi marked a sharp repricing of growth and external-credibility
+      risk after years of rapid credit expansion and capital outflows.
+
+  - iso3: MEX
+    label: Mexico — 2017 peso shock
+    baseline_year: 2015
+    event_year: 2017
+    note: >-
+      Tariff and NAFTA-renegotiation fears, a hawkish US turn, and domestic
+      fiscal concerns drove a sharp peso depreciation and an inflation
+      overshoot in 2017.
+
+  - iso3: IDN
+    label: Indonesia — 2018 rupiah pressure
+    baseline_year: 2016
+    event_year: 2018
+    note: >-
+      US monetary tightening and a widening current-account deficit pushed the
+      rupiah to multi-year lows in 2018, forcing aggressive rate hikes and
+      capital-flow stress for an external-debt-heavy economy.
+
+  - iso3: ITA
+    label: Italy — 2018 sovereign spread widening
+    baseline_year: 2016
+    event_year: 2018
+    note: >-
+      A coalition budget clash with the EU in 2018-19 pushed Italian BTP
+      spreads sharply wider, re-opening the sovereign-banking doom loop that
+      defined the eurozone crisis.
+
+  - iso3: ESP
+    label: Spain — 2012 eurozone banking crisis
+    baseline_year: 2009
+    event_year: 2012
+    note: >-
+      A housing bust and a collapsing real-estate banking sector pushed Spain
+      to the centre of the eurozone debt crisis, culminating in a 100bn euro
+      EU banking bailout in 2012.
+
+  - iso3: KOR
+    label: Korea — 1997 Asian financial crisis
+    baseline_year: 1994
+    event_year: 1997
+    note: >-
+      Heavy short-term corporate borrowing against pegged currencies and a
+      collapsing baht/won triggered the 1997 Korean financial crisis, an IMF
+      programme, and a sharp GDP contraction.
+
+  - iso3: IDN
+    label: Indonesia — 1997 Asian financial crisis
+    baseline_year: 1994
+    event_year: 1997
+    note: >-
+      The 1997 rupiah collapse and banking-sector failure were the most severe
+      of the Asian crisis, producing hyperinflation, a deep recession, and an
+      IMF programme.
+
+  - iso3: USA
+    label: United States — 2008 global financial crisis
+    baseline_year: 2006
+    event_year: 2008
+    note: >-
+      The subprime-driven collapse of Lehman Brothers in September 2008 froze
+      global credit markets; the US entered its deepest recession since the
+      Great Depression.
+
+  - iso3: GBR
+    label: United Kingdom — 2008 financial crisis
+    baseline_year: 2006
+    event_year: 2008
+    note: >-
+      Northern Rock's 2007 run and the 2008 recapitalisation of the Royal
+      Bank of Scotland marked the UK's acute phase of the global financial
+      crisis.
+
+  - iso3: ARG
+    label: Argentina — 2018 currency crisis
+    baseline_year: 2016
+    event_year: 2018
+    note: >-
+      A sudden reversal of capital flows amid fiscal and external imbalances
+      triggered a sharp peso depreciation in 2018 and a record IMF
+      bailout.
+
+  - iso3: GRC
+    label: Greece — 2015 debt crisis and capital controls
+    baseline_year: 2013
+    event_year: 2015
+    note: >-
+      Prolonged debt-restructuring negotiations and Grexit fears culminated in
+      capital controls and a third bailout in 2015, years after the sovereign
+      crisis first erupted.
+
+  - iso3: RUS
+    label: Russia — 2014-15 ruble crisis
+    baseline_year: 2012
+    event_year: 2014
+    note: >-
+      The oil-price collapse and sanctions following the 2014 Ukraine
+      annexation halved the value of the ruble and forced a deep rate-hike and
+      capital-control response.

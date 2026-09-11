@@ -69,6 +69,8 @@ def test_track_record_page_shows_the_relevant_episode_verdicts(monkeypatch):
 
     # Every configured episode is replayed; demo data is labeled honestly.
     assert "Turkiye — 2018 currency crisis" in body
+    assert "Turkiye — 2021 lira crash" in body
     assert "Brazil — 2015-16 recession" in body
+    assert "United States — 2008 global financial crisis" in body
     errors = "\n".join(str(e.value) for e in app.error)
     assert "SYNTHETIC" in errors

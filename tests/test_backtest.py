@@ -27,7 +27,7 @@ def test_backtest_flags_a_real_rise():
             {"country_iso3": "TUR", "year": 2018, "risk_score": 62.0},
         ]
     )
-    results = {r.iso3: r for r in run_backtest(scores, data_is_synthetic=False)}
+    results = {r.iso3: r for r in run_backtest(scores, data_is_synthetic=False) if r.event_year == 2018}
     assert results["TUR"].verdict == "flagged"
     assert results["TUR"].delta == 22.0
     assert results["TUR"].peak_delta == 22.0
@@ -60,7 +60,7 @@ def test_backtest_lead_time_none_for_missed():
             {"country_iso3": "TUR", "year": 2018, "risk_score": 41.0},
         ]
     )
-    r = {x.iso3: x for x in run_backtest(scores, data_is_synthetic=False)}["TUR"]
+    r = {x.iso3: x for x in run_backtest(scores, data_is_synthetic=False) if x.event_year == 2018}["TUR"]
     assert r.verdict == "missed"
     assert r.lead_time is None
 
@@ -72,14 +72,14 @@ def test_backtest_misses_a_flat_score():
             {"country_iso3": "TUR", "year": 2018, "risk_score": 41.0},  # below PASS_THRESHOLD_POINTS
         ]
     )
-    results = {r.iso3: r for r in run_backtest(scores, data_is_synthetic=False)}
+    results = {r.iso3: r for r in run_backtest(scores, data_is_synthetic=False) if r.event_year == 2018}
     assert results["TUR"].verdict == "missed"
     assert results["TUR"].delta < PASS_THRESHOLD_POINTS
 
 
 def test_backtest_missing_year_is_inconclusive_not_a_false_pass():
     scores = pd.DataFrame([{"country_iso3": "TUR", "year": 2016, "risk_score": 40.0}])
-    results = {r.iso3: r for r in run_backtest(scores, data_is_synthetic=False)}
+    results = {r.iso3: r for r in run_backtest(scores, data_is_synthetic=False) if r.event_year == 2018}
     assert results["TUR"].verdict == "inconclusive"
 
 
@@ -115,7 +115,7 @@ def test_backtest_peer_drift_is_reported():
             {"country_iso3": "CAN", "year": 2018, "risk_score": 41.0},
         ]
     )
-    results = {r.iso3: r for r in run_backtest(scores, data_is_synthetic=False)}
+    results = {r.iso3: r for r in run_backtest(scores, data_is_synthetic=False) if r.event_year == 2018}
     assert results["TUR"].peer_drift == 0.5
 
 
@@ -142,7 +142,7 @@ def test_backtest_dominant_component_is_reported():
             },
         ]
     )
-    r = {x.iso3: x for x in run_backtest(scores, data_is_synthetic=False)}["TUR"]
+    r = {x.iso3: x for x in run_backtest(scores, data_is_synthetic=False) if x.event_year == 2018}["TUR"]
     assert r.dominant_pillar == "pillar_fiscal_sustainability_score"
     assert r.dominant_sector == "sector_macro_fiscal_sector_score"
 
@@ -191,7 +191,7 @@ def test_backtest_cli_writes_json(tmp_path, capsys):
     # USA-only panel scores no episode years, so every episode is inconclusive
     # and the CLI says so explicitly rather than printing a bogus detection rate.
     assert payload["summary"]["inconclusive"] == len(EPISODES)
-    assert "All 4 episodes inconclusive" in capsys.readouterr().out
+    assert f"All {len(EPISODES)} episodes inconclusive" in capsys.readouterr().out
 
 
 def _flat_panel_scores(value: float = 50.0, years: tuple = (2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022)):

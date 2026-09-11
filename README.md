@@ -25,7 +25,7 @@ flowchart LR
 - Flags missing, duplicate, and out-of-range observations before pivoting to the scoring panel.
 - Produces a deterministic 0–100 **relative** score, contributions, bands, peer comparisons, and rule-based commentary.
 - **Deterioration watch**: ranks every tracked country by year-over-year score change and flags anyone who stepped into a worse risk band — a cross-country early-warning view, not just a single-country readout.
-- **Model validation (backtest)**: checks the scoring engine's own historical output against known real macro-stress episodes (Turkiye 2018, Brazil 2015-16, South Africa's fiscal deterioration, the UK's 2022 gilt shock) and reports honestly whether the score actually rose — including when it didn't.
+- **Model validation (backtest)**: checks the scoring engine's own historical output against a curated set of real macro-stress episodes defined in `config/episodes.yaml` — now 17 cases spanning 1990–2025 (Turkiye 2018, Brazil 2015-16, South Africa's fiscal deterioration, the UK's 2022 gilt shock, China 2015, Mexico 2017, Indonesia 2018, Italy 2018, Spain 2012, Korea/Indonesia 1997, USA/UK 2008, Argentina 2018, Greece 2015, Russia 2014) — and reports honestly whether the score actually rose, including when it didn't.
 - Records a JSON data vintage for live pipeline runs and exposes source series, units, transformations, weights, coverage, and source links in the UI.
 - Keeps synthetic demo data explicitly separate from live public data.
 
@@ -155,7 +155,7 @@ Streamlit Community Cloud with this repository, Python dependencies from
 
 ## Limitations and roadmap
 
-The model depends on public-source definitions, revisions, publication lags, and the selected country universe. Missing data alters effective weights and may conceal an unmeasured vulnerability. The backtest checks 4 known episodes against an annual, backward-looking, cross-sectional model — it will structurally lag fast-moving shocks that unfold within a single year, and a small episode count means "flagged" is encouraging, not proof. Future work includes documented multi-country policy-rate series, a larger backtest set, and a provenance-aware refresh that surfaces drift (the reproducibility manifest already records the hashes a scheduled refresh can diff against).
+The model depends on public-source definitions, revisions, publication lags, and the selected country universe. Missing data alters effective weights and may conceal an unmeasured vulnerability. The backtest checks the configured episodes (17 known crises, 1990–2025) against an annual, backward-looking, cross-sectional model — it will structurally lag fast-moving shocks that unfold within a single year, and the episode set remains too small for "flagged" to be proof, only encouragement. Future work includes documented multi-country policy-rate series, a larger backtest set, and a provenance-aware refresh that surfaces drift (the reproducibility manifest already records the hashes a scheduled refresh can diff against).
 
 ## Recruiter view
 

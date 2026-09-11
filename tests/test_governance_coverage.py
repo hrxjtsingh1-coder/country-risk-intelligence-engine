@@ -13,10 +13,10 @@ def test_coverage_passes_on_demo_panel():
     assert report.status == "ok"
     assert not [i for i in report.issues if i.severity == "error"]
     assert report.indicator_total == report.indicator_covered
-    # Structural checks all pass; the BRA episode warning (baseline 2013 outside
-    # the demo window) is expected and reported as a warning, not an error.
-    expected_fail = {"episode_windows_in_range"}
-    assert all(v for k, v in report.checks.items() if k not in expected_fail)
+    # The demo window (1990-2025) spans every configured episode, so all
+    # structural checks pass.
+    assert report.checks["episode_windows_in_range"] is True
+    assert all(report.checks.values())
 
 
 def test_coverage_detects_missing_positive_weight_column():
