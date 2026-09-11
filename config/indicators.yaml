@@ -353,3 +353,60 @@ indicators:
     note: "Shock driver for the commodity-collapse preset (exporters' terms-of-trade swing). Weight 0.00 reserved: it stays out of the composite score so methodology and backtest results remain unchanged; it drives the scenario, it is not a scored input. Positive = prices rising."
     min: -100
     max: 100
+
+  # ---------------------------------------------------------------------------
+  # Greenspan-Guidotti inputs (reserved, zero weight). These two series are the
+  # numerator/denominator of the reserves-to-short-term-debt ratio below — a
+  # classic EM early-warning indicator (ratio below ~1 = rollover vulnerability).
+  # They are collected so the derived ratio can be computed and surfaced
+  # visually; neither is scored, so methodology and backtest results stay
+  # unchanged. Promoting the ratio into the composite is a separate, deliberate
+  # methodology change (see the BIS_CREDIT_GAP promotion issue for the process).
+  # ---------------------------------------------------------------------------
+  - code: FI.RES.XGLD.CD
+    label: Total reserves minus gold
+    category: External
+    pillar: External Vulnerability
+    weight: 0.00
+    risk_direction: -1
+    source: world_bank
+    world_bank: FI.RES.XGLD.CD
+    source_url: "https://data.worldbank.org/indicator/FI.RES.XGLD.CD"
+    frequency: annual
+    transformation: "Published annual value; no additional transformation."
+    unit: "current US$"
+    note: "Total reserves minus gold, in current US dollars (the numerator of the Greenspan-Guidotti ratio). Reserved at zero weight; used only to derive RESERVES_TO_SHORT_TERM_DEBT_RATIO."
+    min: 0
+    max: 100000000000000
+
+  - code: DT.DOD.DSTC.CD
+    label: Short-term external debt
+    category: External
+    pillar: External Vulnerability
+    weight: 0.00
+    risk_direction: 1
+    source: world_bank
+    world_bank: DT.DOD.DSTC.CD
+    source_url: "https://data.worldbank.org/indicator/DT.DOD.DSTC.CD"
+    frequency: annual
+    transformation: "Published annual value; no additional transformation."
+    unit: "current US$"
+    note: "External debt stocks with an original maturity of one year or less, in current US dollars (the denominator of the Greenspan-Guidotti ratio). Reserved at zero weight; used only to derive RESERVES_TO_SHORT_TERM_DEBT_RATIO."
+    min: 0
+    max: 10000000000000
+
+  - code: RESERVES_TO_SHORT_TERM_DEBT_RATIO
+    label: Reserves-to-short-term-debt ratio
+    category: External
+    pillar: External Vulnerability
+    weight: 0.00
+    risk_direction: -1
+    source: derived
+    source_url: "https://data.worldbank.org/indicator/FI.RES.XGLD.CD"
+    source_series: FI.RES.XGLD.CD
+    frequency: annual
+    transformation: "Derived Greenspan-Guidotti ratio: total reserves minus gold (FI.RES.XGLD.CD, current US$) divided by short-term external debt stocks (DT.DOD.DSTC.CD, current US$), only where short-term debt is positive. A ratio below ~1 signals insufficient reserves to cover maturing short-term external claims — the classic crisis-vulnerability threshold. Higher = safer."
+    unit: "x (reserves / short-term external debt)"
+    note: "Greenspan-Guidotti rule indicator, surfaced on the country page with a 1.0 reference line. Weight 0.00 reserved: not scored, so methodology and backtest results remain unchanged; it is a transparency signal, not a scored input."
+    min: 0
+    max: 100

@@ -53,6 +53,11 @@ def create_panel(countries: list[dict], start: int, end: int) -> pd.DataFrame:
             # when commodity prices fall, exporters' current account weakens and
             # their currency depreciates.
             commodity_signal = -18.0 + 9.0 * sin(elapsed * 0.9) + 7.0 * cos(elapsed * 0.45)
+            # Greenspan-Guidotti inputs (current US$) and the derived ratio. Kept
+            # internally consistent so the coverage derivation check passes:
+            # ratio = reserves / short-term external debt, both dollars.
+            reserves_usd = 2.6e12 + profile * 4.0e11 - cycle * 1.2e11 + elapsed * 2.0e9
+            st_debt_usd = 1.7e12 - profile * 2.5e11 + cycle * 9.0e10 + elapsed * 1.5e9
             rows.append(
                 {
                     "country_iso3": iso3,
@@ -71,6 +76,8 @@ def create_panel(countries: list[dict], start: int, end: int) -> pd.DataFrame:
                     "NE.RSB.GNFS.ZS": round(1.0 - profile * 0.4 + cycle * 0.2, 3),
                     "COMMODITY_PRICE_INDEX_PCT": round(commodity_signal, 3),
                     "BIS_CREDIT_GAP": round(2.0 - profile * 1.4 + cycle * 2.2 - (elapsed % 3) * 1.5, 3),
+                    "FI.RES.XGLD.CD": round(reserves_usd, 3),
+                    "DT.DOD.DSTC.CD": round(st_debt_usd, 3),
                 }
             )
 
@@ -79,6 +86,9 @@ def create_panel(countries: list[dict], start: int, end: int) -> pd.DataFrame:
         lambda s: (s - s.rolling(3, min_periods=2).mean()).round(3)
     )
     panel["PUBLIC_DEBT_TRAJECTORY_PCT"] = panel.groupby("country_iso3")["GC.DOD.TOTL.GD.ZS"].diff(3).round(3)
+    panel["RESERVES_TO_SHORT_TERM_DEBT_RATIO"] = (
+        panel["FI.RES.XGLD.CD"] / panel["DT.DOD.DSTC.CD"]
+    ).round(3)
     return panel
 
 

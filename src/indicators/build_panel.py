@@ -699,9 +699,12 @@ def _series_slice(panel: pd.DataFrame, code: str) -> pd.DataFrame:
 def _derive_indicators(panel: pd.DataFrame) -> pd.DataFrame:
     """Append derived indicators that reference other panel series.
 
-    OUTPUT_GAP_PROXY_PCT       : real GDP growth minus trailing 3-year own-growth
-                                 mean (a documented proxy for cyclical slack).
-    PUBLIC_DEBT_TRAJECTORY_PCT : 3-year change in the public-debt-to-GDP ratio.
+    OUTPUT_GAP_PROXY_PCT            : real GDP growth minus trailing 3-year own-growth
+                                     mean (a documented proxy for cyclical slack).
+    PUBLIC_DEBT_TRAJECTORY_PCT      : 3-year change in the public-debt-to-GDP ratio.
+    RESERVES_TO_SHORT_TERM_DEBT_RATIO : Greenspan-Guidotti ratio, total reserves minus
+                                     gold divided by short-term external debt (both
+                                     current US$), only where short-term debt is positive.
     """
     frames = []
 
@@ -724,6 +727,23 @@ def _derive_indicators(panel: pd.DataFrame) -> pd.DataFrame:
         traj["source"] = "Derived from World Bank GC.DOD.TOTL.GD.ZS"
         traj["flag"] = "ok"
         frames.append(traj[LONG_COLUMNS])
+
+    if {"FI.RES.XGLD.CD", "DT.DOD.DSTC.CD"} <= set(panel["indicator_code"]):
+        reserves = _series_slice(panel, "FI.RES.XGLD.CD")[["country_iso3", "year", "value"]].rename(
+            columns={"value": "reserves"}
+        )
+        st_debt = _series_slice(panel, "DT.DOD.DSTC.CD")[["country_iso3", "year", "value"]].rename(
+            columns={"value": "st_debt"}
+        )
+        merged = reserves.merge(st_debt, on=["country_iso3", "year"], how="inner")
+        merged = merged[merged["st_debt"].fillna(0.0) > 0.0].copy()
+        merged["value"] = (merged["reserves"] / merged["st_debt"]).round(3)
+        if not merged.empty:
+            ratio = merged[["country_iso3", "year", "value"]].copy()
+            ratio["indicator_code"] = "RESERVES_TO_SHORT_TERM_DEBT_RATIO"
+            ratio["source"] = "Derived from World Bank FI.RES.XGLD.CD / DT.DOD.DSTC.CD"
+            ratio["flag"] = "ok"
+            frames.append(ratio[LONG_COLUMNS])
 
     if not frames:
         return pd.DataFrame(columns=LONG_COLUMNS)

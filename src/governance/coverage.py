@@ -47,6 +47,7 @@ REPAIR_CMDS: dict[str, str] = {
 DERIVABLE: dict[str, list[str]] = {
     "OUTPUT_GAP_PROXY_PCT": ["NY.GDP.MKTP.KD.ZG"],
     "PUBLIC_DEBT_TRAJECTORY_PCT": ["GC.DOD.TOTL.GD.ZS"],
+    "RESERVES_TO_SHORT_TERM_DEBT_RATIO": ["FI.RES.XGLD.CD", "DT.DOD.DSTC.CD"],
 }
 
 
