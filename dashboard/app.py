@@ -45,6 +45,7 @@ from dashboard import ui  # noqa: E402
 from dashboard.context import Context  # noqa: E402
 from dashboard.sections import about as about_section  # noqa: E402
 from dashboard.sections import comparison as comparison_section  # noqa: E402
+from dashboard.sections import contagion as contagion_section  # noqa: E402
 from dashboard.sections import country as country_section  # noqa: E402
 from dashboard.sections import map as map_section  # noqa: E402
 from dashboard.sections import methodology as methodology_section  # noqa: E402
@@ -362,11 +363,12 @@ with st.sidebar:
 
     page = st.radio(
         "Pages",
-        ["Overview", "Track Record & Model Validation"],
+        ["Overview", "Track Record & Model Validation", "Contagion & Correlations"],
         index=0,
         key="page_nav",
         help="Overview renders the full cockpit; the Track Record page is the "
-        "honest replay of past crisis episodes against this engine's own scores.",
+        "honest replay of past crisis episodes against this engine's own scores; "
+        "the Contagion page maps which countries' risk scores move together.",
     )
 
     st.markdown("---")
@@ -599,8 +601,9 @@ _RENDER_SECTIONS = [
     about_section.render_about,
 ]
 
-if page != "Overview":
-    track_record_section.render_track_record(ctx)
+
+def _render_nav_footer(ctx: Context) -> None:
+    """Footer shared by the dedicated nav pages (Track Record, Contagion, ...)."""
     st.markdown(
         f"""
         <div class="footer">
@@ -614,6 +617,16 @@ if page != "Overview":
         """,
         unsafe_allow_html=True,
     )
+
+
+if page == "Track Record & Model Validation":
+    track_record_section.render_track_record(ctx)
+    _render_nav_footer(ctx)
+    st.stop()
+
+if page == "Contagion & Correlations":
+    contagion_section.render_contagion(ctx)
+    _render_nav_footer(ctx)
     st.stop()
 
 for _render in _RENDER_SECTIONS:
