@@ -130,6 +130,54 @@ def test_score_panel_rejects_bad_weight_override():
         score_panel(panel(), pillar_weights={})
 
 
+def test_no_lookahead_leakage():
+    """The score for year T must be identical whether or not years T+1..N exist.
+
+    This is the expanding-window regression test: append a hyperinflation shock
+    in 2020 (via FP.CPI.TOTL.ZG = 2000 for Brazil) and verify that the 2018
+    score does not change at all.  Any change proves future data leaked into
+    the historical score.
+    """
+    base = panel()
+    scores_base, _, _ = score_panel(base)
+
+    # Append an extreme 2020 shock — should not affect pre-2020 scores.
+    shock_row = {
+        "country_iso3": "BRA",
+        "year": 2020,
+        "FP.CPI.TOTL.ZG": 2000.0,
+        "NY.GDP.MKTP.KD.ZG": -10.0,
+        "SL.UEM.TOTL.ZS": 15.0,
+        "OUTPUT_GAP_PROXY_PCT": -8.0,
+        "GC.DOD.TOTL.GD.ZS": 90.0,
+        "GC.NLD.TOTL.GD.ZS": -8.0,
+        "PUBLIC_DEBT_TRAJECTORY_PCT": 5.0,
+        "BN.CAB.XOKA.GD.ZS": -5.0,
+        "FI.RES.TOTL.MO": 2.0,
+        "DT.DOD.DECT.GN.ZS": 60.0,
+        "NE.RSB.GNFS.ZS": -5.0,
+        "FB.AST.NPER.ZS": 5.0,
+        "FX_YOY_DEPRECIATION_PCT": 50.0,
+        "POLICY_RATE_YOY_CHANGE_BPS": 5000.0,
+    }
+    extended = pd.concat([base, pd.DataFrame([shock_row])], ignore_index=True)
+    scores_ext, _, _ = score_panel(extended)
+
+    # Every year STRICTLY BEFORE the shock year must be identical across runs.
+    # Year 2020 itself may change because peer_z correctly reflects the new
+    # BRA data point in that year's cross-section — that is valid.
+    for iso in ["USA", "CAN", "DEU", "IND", "BRA"]:
+        for y in range(2015, 2020):
+            base_val = scores_base[(scores_base.country_iso3 == iso) & (scores_base.year == y)]["risk_score"]
+            ext_val = scores_ext[(scores_ext.country_iso3 == iso) & (scores_ext.year == y)]["risk_score"]
+            if base_val.empty or ext_val.empty:
+                continue
+            assert base_val.iloc[0] == ext_val.iloc[0], (
+                f"{iso} {y}: score changed from {base_val.iloc[0]} to "
+                f"{ext_val.iloc[0]} after appending future shock — look-ahead leak"
+            )
+
+
 def test_duplicate_cleaning_and_range_flag():
     clean = clean_long_panel(
         pd.DataFrame(

@@ -4,8 +4,9 @@ Transparent country-risk scoring engine (Phase 4 methodology).
 Method:
 1. Read indicator metadata/pillar weights from config/indicators.yaml.
 2. For every indicator, compute a risk z-score that blends TWO normalizations:
-     - time z : the country's value vs its OWN history over the panel window
-                (nominally 10 years)
+     - time z : the country's value vs its OWN history using an expanding
+                window (only observations up to the current year, never future
+                data — no look-ahead leakage)
      - peer z : the country's value vs its PEER GROUP (advanced/emerging,
                 from config/countries.yaml) in the SAME year
    A side with too few observations is dropped and the other side carries the
@@ -230,6 +231,7 @@ def _indicator_map() -> dict[str, dict]:
 
 
 def _zscore(series: pd.Series) -> pd.Series:
+    """Full-history z-score (peer-group cross-section use only)."""
     numeric = pd.to_numeric(series, errors="coerce")
     mean = numeric.mean()
     std = numeric.std(ddof=0)
@@ -238,6 +240,26 @@ def _zscore(series: pd.Series) -> pd.Series:
         return pd.Series(0.0, index=series.index)
 
     return (numeric - mean) / std
+
+
+def _expanding_zscore(series: pd.Series, min_periods: int = 1) -> pd.Series:
+    """Expanding-window z-score: position t uses only observations <= t.
+
+    No observation after year t can influence the z-score at year t.
+    Returns NaN where fewer than min_periods non-NaN values have been seen
+    so far (the blend logic falls back to peer_z in those early years).
+    Returns 0.0 where the expanding std is exactly 0 (all values seen so
+    far are identical — the value is exactly at its expanding mean).
+    """
+    numeric = pd.to_numeric(series, errors="coerce")
+    exp_mean = numeric.expanding(min_periods=min_periods).mean()
+    exp_std = numeric.expanding(min_periods=min_periods).std(ddof=0)
+
+    z = pd.Series(np.nan, index=series.index)
+    valid = exp_std.notna() & (exp_std > 0)
+    z[valid] = (numeric[valid] - exp_mean[valid]) / exp_std[valid]
+    z[exp_std.notna() & (exp_std == 0)] = 0.0
+    return z
 
 
 def _score_from_signal(normalized_signal: float) -> float:
@@ -310,6 +332,11 @@ def score_panel(
 
     driver_frames = []
 
+    # Sort once so expanding() sees each country's history in chronological order.
+    working = working.sort_values(["country_iso3", "year"]).reset_index(drop=True)
+
+    min_hist = int(min_history_obs)
+
     for code, meta in cfg.items():
         if code not in working.columns:
             continue
@@ -318,10 +345,10 @@ def score_panel(
         risk_direction = float(meta.get("risk_direction", 1))
         weight = float(meta.get("weight", 0))
 
-        # time z — the country's value against its own full panel history
-        n_hist = values.notna().groupby(working["country_iso3"]).transform("sum")
-        time_z = values.groupby(working["country_iso3"]).transform(_zscore)
-        time_z = time_z.where(n_hist >= min_history_obs)
+        # time z — expanding window: only past + present, never future
+        time_z = values.groupby(working["country_iso3"]).transform(
+            lambda s, m=min_hist: _expanding_zscore(s, min_periods=m)
+        )
 
         # peer z — the country's value against its peer group in the same year
         # (whole-panel cross-section when the country has no peer group)
