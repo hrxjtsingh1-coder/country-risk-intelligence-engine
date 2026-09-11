@@ -185,10 +185,11 @@ def correlation_network(
             cluster_of[iso3] = cluster_index
 
     nodes: list[dict] = []
-    for iso3 in countries:
-        row = corr.loc[iso3] if iso3 in corr.index else pd.Series(dtype=float)
-        others = row.drop(index=iso3).dropna()
-        integration = float(others.abs().mean()) if not others.empty else float("nan")
+    for i, iso3 in enumerate(countries):
+        row_vals = corr_arr[i, :]
+        others = row_vals[np.arange(corr_arr.shape[0]) != i]
+        others = others[np.isfinite(others)]
+        integration = float(np.mean(np.abs(others))) if others.size else float("nan")
         degree = sum(1 for e in edges if e["a"] == iso3 or e["b"] == iso3)
         nodes.append(
             {
