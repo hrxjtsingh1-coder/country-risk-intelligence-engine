@@ -92,6 +92,44 @@ def test_composite_blends_sector_score_with_configurable_weight(tmp_path, monkey
     assert not blended.round(6).eq(hi.round(6)).all()
 
 
+def test_equal_weight_pillar_weights_flat_and_sums_to_one():
+    import pytest
+
+    ew = rs.equal_weight_pillar_weights()
+    assert sum(ew.values()) == pytest.approx(1.0)
+    active = [w for w in ew.values() if w > 0]
+    assert len(set(active)) == 1  # every active pillar carries the same weight
+    config = rs._load_pillar_weights()
+    assert {p for p, w in config.items() if w > 0} == {p for p, w in ew.items() if w > 0}
+
+
+def test_score_panel_accepts_pillar_weight_override():
+    from src.scoring.risk_score import equal_weight_pillar_weights
+
+    weighted, _, _ = score_panel(panel())
+    equal, _, _ = score_panel(panel(), pillar_weights=equal_weight_pillar_weights(), sector_composite_weight=0.0)
+    assert set(weighted.columns) == set(equal.columns)
+    # Equal-weight composite still a valid 0-100 score with full coverage.
+    assert equal["risk_score"].between(0, 100).all()
+    assert equal["risk_score"].notna().all()
+    # Nontrivial: the tuning changes at least some country-years.
+    merged = weighted[["country_iso3", "year", "risk_score"]].merge(
+        equal[["country_iso3", "year", "risk_score"]],
+        on=["country_iso3", "year"],
+        suffixes=("_w", "_e"),
+    )
+    assert not merged["risk_score_w"].round(6).eq(merged["risk_score_e"].round(6)).all()
+
+
+def test_score_panel_rejects_bad_weight_override():
+    import pytest
+
+    with pytest.raises(ValueError):
+        score_panel(panel(), pillar_weights={"Macro Growth & Inflation": 0.5})  # does not sum to 1.0
+    with pytest.raises(ValueError):
+        score_panel(panel(), pillar_weights={})
+
+
 def test_duplicate_cleaning_and_range_flag():
     clean = clean_long_panel(
         pd.DataFrame(

@@ -12,6 +12,7 @@ in isolation.
 
 from __future__ import annotations
 
+import pandas as pd
 import streamlit as st
 
 from dashboard.context import Context
@@ -21,6 +22,8 @@ from src.analysis.backtest import (
     backtest_summary,
     false_alarm_rate,
     run_backtest,
+    run_weighting_comparison,
+    weight_schemes,
 )
 
 
@@ -96,6 +99,89 @@ def _render_kpi_row(items: list[tuple[str, str, str]]) -> None:
                 """,
                 unsafe_allow_html=True,
             )
+
+
+def _fmt_metric(key: str, value: float | None) -> str:
+    if value is None:
+        return "—"
+    if key == "median_lead_time":
+        return f"{value:g}"
+    return f"{value:.0%}"
+
+
+def _render_weighting_comparison(ctx: Context) -> None:
+    """Score the SAME panel under both weightings and prove the tuned-vs-naive edge.
+
+    The equal-weight baseline is the weakest honest comparator: the same
+    indicators and pillar scores, but every active pillar weighted equally and
+    the sector layer switched off. If the tuned weights are worth anything, the
+    weighted scheme should flag at least as many real crises with no worse a
+    false-alarm record — shown side by side, never assumed.
+    """
+    st.markdown(
+        """
+        <div class="section-sub" style="margin-top:20px;">
+            Weighted vs naive equal-weight baseline
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    try:
+        comparison = run_weighting_comparison(ctx.panel, data_is_synthetic=ctx.using_demo_data)
+    except Exception as exc:  # pragma: no cover - defensive against panel drift
+        st.caption(f"Equal-weight baseline unavailable on this panel: {esc(repr(exc))}")
+        return
+
+    labels = weight_schemes()
+    metric_rows = []
+    metric_names = {
+        "detection_rate": "Detection rate",
+        "recall": "Recall",
+        "precision": "Precision",
+        "false_positive_rate": "False-positive rate",
+        "false_negative_rate": "False-negative rate",
+        "warning_frequency": "Warning frequency",
+        "median_lead_time": "Median lead time (yrs)",
+    }
+    for key, name in metric_names.items():
+        w = getattr(comparison["weighted"]["metrics"], key)
+        e = getattr(comparison["equal_weight"]["metrics"], key)
+        metric_rows.append(
+            {
+                "metric": name,
+                "weighted": _fmt_metric(key, w),
+                "equal_weight": _fmt_metric(key, e),
+            }
+        )
+
+    st.dataframe(pd.DataFrame(metric_rows), hide_index=True, use_container_width=True)
+
+    verdict_rows = []
+    for rw, re_ in zip(comparison["weighted"]["results"], comparison["equal_weight"]["results"], strict=False):
+        verdict_rows.append(
+            {
+                "episode": rw.label,
+                "weighted": rw.verdict.upper(),
+                "equal_weight": re_.verdict.upper(),
+            }
+        )
+    st.dataframe(pd.DataFrame(verdict_rows), hide_index=True, use_container_width=True)
+
+    st.markdown(
+        f"""
+        <div class="card" style="margin:14px 0;">
+            <div class="card-caption">
+                <b>{esc(labels["weighted"])}</b> vs <b>{esc(labels["equal_weight"])}</b> — identical
+                indicators, identical episode replay, only the weighting differs. A higher detection
+                rate with a comparable false-alarm rate means the tuned weights add real signal; a tie
+                or a worse result means the equal-weight baseline is just as good and the tuning is
+                decorative.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def render_track_record(ctx: Context) -> None:
@@ -206,6 +292,8 @@ def render_track_record(ctx: Context) -> None:
     )
 
     _render_episode_cards(results)
+
+    _render_weighting_comparison(ctx)
 
     with st.expander("How to read this honestly"):
         st.markdown(

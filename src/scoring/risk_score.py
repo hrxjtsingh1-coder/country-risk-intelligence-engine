@@ -98,6 +98,34 @@ def _load_pillar_weights() -> dict[str, float]:
     return pw
 
 
+def _normalize_pillar_weights(pillar_weights: dict[str, float]) -> dict[str, float]:
+    """Validate a caller-supplied pillar-weight map (sum -> 1.0, >=1 positive)."""
+    pw = {str(k): float(v) for k, v in pillar_weights.items()}
+    if not pw:
+        raise ValueError("pillar_weights must not be empty.")
+    if not np.isclose(sum(pw.values()), 1.0):
+        raise ValueError(f"pillar_weights must sum to 1.0 (got {sum(pw.values()):.4f}).")
+    if not any(w > 0 for w in pw.values()):
+        raise ValueError("At least one pillar must carry positive weight.")
+    return pw
+
+
+def equal_weight_pillar_weights() -> dict[str, float]:
+    """Flat weights across the configured active pillars (no pillar weighting).
+
+    The naive baseline for model validation: the SAME indicators, pillar
+    scores and sector layer, but every positive-weight pillar is weighted
+    equally instead of by the tuned config weights. Weight zeros are kept so
+    the active set matches the configured methodology exactly.
+    """
+    pw = _load_pillar_weights()
+    active = {p for p, w in pw.items() if w > 0}
+    if not active:
+        raise ValueError("No positive-weight pillars to equalize.")
+    share = round(1.0 / len(active), 6)
+    return {p: share if w > 0 else 0.0 for p, w in pw.items()}
+
+
 def _load_peer_groups() -> dict[str, str]:
     """iso3 -> peer-group name, from config/countries.yaml peer_groups."""
     try:
@@ -252,13 +280,20 @@ def _empty_frames():
     return scores, drivers, pillar_scores
 
 
-def score_panel(panel: pd.DataFrame):
+def score_panel(
+    panel: pd.DataFrame,
+    *,
+    pillar_weights: dict[str, float] | None = None,
+    sector_composite_weight: float | None = None,
+):
     if panel is None or panel.empty:
         return _empty_frames()
 
     cfg = _indicator_map()
-    pillar_w = _load_pillar_weights()
+    pillar_w = _load_pillar_weights() if pillar_weights is None else _normalize_pillar_weights(pillar_weights)
     scoring = _load_scoring()
+    if sector_composite_weight is not None:
+        scoring = {**scoring, "sector_composite_weight": float(sector_composite_weight)}
     peer_map = _load_peer_groups()
 
     min_history_obs = float(scoring["min_history_obs"])

@@ -596,6 +596,50 @@ def evaluate_panel(
     return results, backtest_summary(results), scores
 
 
+def weight_schemes() -> dict[str, str]:
+    """Human-readable labels for the two weighting schemes in the comparison."""
+    return {
+        "weighted": "Pillar-weighted (tuned weights + sector layer)",
+        "equal_weight": "Equal-weight baseline (no pillar weighting)",
+    }
+
+
+def run_weighting_comparison(
+    panel: pd.DataFrame,
+    data_is_synthetic: bool = False,
+) -> dict[str, dict[str, Any]]:
+    """Score the same panel under both weightings and replay every episode.
+
+    The weighted run uses the configured pillar weights + sector layer (the
+    production methodology). The equal-weight run uses the SAME indicators and
+    pillar scores but every active pillar weighted equally and the sector layer
+    switched off — the naive baseline. Returns a mapping scheme-name -> bundle
+    with `scores`, `results`, `summary` and `metrics` so callers can render the
+    two side by side and let the numbers prove (or disprove) the tuned
+    methodology's edge.
+    """
+    from src.scoring.risk_score import equal_weight_pillar_weights
+
+    def _run(pillar_weights: dict[str, float] | None, sector_composite_weight: float | None) -> dict[str, Any]:
+        scored = score_panel(
+            panel,
+            pillar_weights=pillar_weights,
+            sector_composite_weight=sector_composite_weight,
+        )[0]
+        results = run_backtest(scored, data_is_synthetic=data_is_synthetic)
+        return {
+            "scores": scored,
+            "results": results,
+            "summary": backtest_summary(results),
+            "metrics": backtest_metrics(results, scored),
+        }
+
+    return {
+        "weighted": _run(None, None),
+        "equal_weight": _run(equal_weight_pillar_weights(), 0.0),
+    }
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
