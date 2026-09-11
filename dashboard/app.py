@@ -49,6 +49,7 @@ from dashboard.sections import country as country_section  # noqa: E402
 from dashboard.sections import map as map_section  # noqa: E402
 from dashboard.sections import methodology as methodology_section  # noqa: E402
 from dashboard.sections import scenario as scenario_section  # noqa: E402
+from dashboard.sections import track_record as track_record_section  # noqa: E402
 from dashboard.ui import (  # noqa: E402
     available_countries,
     available_years,
@@ -342,6 +343,22 @@ with st.sidebar:
     st.markdown("---")
 
     st.markdown(
+        '<div class="kicker" style="margin-bottom:7px;">PAGES</div>',
+        unsafe_allow_html=True,
+    )
+
+    page = st.radio(
+        "Pages",
+        ["Overview", "Track Record & Model Validation"],
+        index=0,
+        key="page_nav",
+        help="Overview renders the full cockpit; the Track Record page is the "
+        "honest replay of past crisis episodes against this engine's own scores.",
+    )
+
+    st.markdown("---")
+
+    st.markdown(
         """
         <div class="micro">
             ENGINE STATUS<br>
@@ -523,7 +540,7 @@ _RENDER_SECTIONS = [
     country_section.render_drivers,
     comparison_section.render_peer_comparison,
     comparison_section.render_deterioration_watch,
-    methodology_section.render_model_validation,
+    track_record_section.render_track_record,
     scenario_section.render_scenario_laboratory,
     country_section.render_analyst_intelligence,
     methodology_section.render_model_card,
@@ -532,6 +549,20 @@ _RENDER_SECTIONS = [
     methodology_section.render_engine_integrity,
     about_section.render_about,
 ]
+
+if page != "Overview":
+    track_record_section.render_track_record(ctx)
+    st.markdown(
+        f"""
+        <div class="footer">
+            <span>COUNTRY RISK INTELLIGENCE ENGINE</span>
+            <span>{esc(ctx.iso)} / {int(ctx.year)} · ANALYTICAL CORE INTACT</span>
+            <span>UI BUILD · {ctx.generated_at}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.stop()
 
 for _render in _RENDER_SECTIONS:
     _render(ctx)

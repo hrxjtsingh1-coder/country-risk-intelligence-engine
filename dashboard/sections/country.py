@@ -124,7 +124,7 @@ def render_provenance(ctx: Context) -> None:
 2. Read the **risk score** and **"What does this mean?"** panel — that's the whole story in one screen.
 3. Check **drivers** to see which indicators are pushing risk up vs pulling it down.
 4. Scroll to **Deterioration watch** to see what's moving across the whole panel, not just your selection.
-5. Open **Model validation** to see whether this scoring approach would actually have caught real past crises.
+5. Open **Track record** (in the sidebar) to see whether this scoring approach would actually have caught real past crises.
 6. Try the **Scenario Lab** to stress-test a policy-rate shock.
 7. Open **Methodology** if you want the actual math, or **Export & inspection** for the raw data.
             """

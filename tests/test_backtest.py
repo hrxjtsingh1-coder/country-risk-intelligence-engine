@@ -7,6 +7,7 @@ from src.analysis.backtest import (
     EPISODES,
     PASS_THRESHOLD_POINTS,
     backtest_summary,
+    false_alarm_rate,
     run_backtest,
 )
 
@@ -157,3 +158,58 @@ def test_backtest_cli_writes_json(tmp_path, capsys):
     # and the CLI says so explicitly rather than printing a bogus detection rate.
     assert payload["summary"]["inconclusive"] == len(EPISODES)
     assert "All 4 episodes inconclusive" in capsys.readouterr().out
+
+
+def _flat_panel_scores(value: float = 50.0, years: tuple = (2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022)):
+    return pd.DataFrame([{"country_iso3": iso, "year": y, "risk_score": value} for iso in ("X1", "X2") for y in years])
+
+
+def test_false_alarm_rate_flat_panel_is_zero():
+    assert false_alarm_rate(_flat_panel_scores()) == 0.0
+
+
+def test_false_alarm_rate_empty_is_none():
+    assert false_alarm_rate(pd.DataFrame()) is None
+
+
+def test_false_alarm_rate_single_row_is_zero():
+    # One comparable window (the row vs itself) that does not trip the rule.
+    assert false_alarm_rate(pd.DataFrame([{"country_iso3": "X1", "year": 2018, "risk_score": 50.0}])) == 0.0
+
+
+def test_false_alarm_rate_counts_a_systemic_rise():
+    # One step jump mid-panel: only the baseline year right before the jump has
+    # a rising peak inside its window (2017 -> 40, window peaks 60), so exactly
+    # one of the eight comparable baseline windows trips the rule.
+    rows = []
+    for y in (2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022):
+        rows.append({"country_iso3": "X1", "year": y, "risk_score": 40.0 if y <= 2017 else 60.0})
+    scores = pd.DataFrame(rows)
+    assert false_alarm_rate(scores) == 0.125
+
+
+def test_false_alarm_rate_respects_threshold():
+    scores = pd.DataFrame(
+        [
+            {"country_iso3": "X1", "year": y, "risk_score": 40.0 if y <= 2017 else 60.0}
+            for y in (2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022)
+        ]
+    )
+    assert false_alarm_rate(scores, threshold_points=100.0) == 0.0
+
+
+def test_false_alarm_rate_excludes_episode_windows_by_default():
+    # TUR 2016 -> 2018 (the configured 2018 crisis). Every TUR year in the
+    # panel falls inside the excluded window (baseline 2016, event 2018 +/-1),
+    # so with exclusion there is nothing ordinary to compare and the rate is
+    # None. Without exclusion, a 2-year window from the 2016 baseline reaches
+    # the 2018 jump: one of the two comparable baselines trips -> 0.5.
+    scores = pd.DataFrame(
+        [
+            {"country_iso3": "TUR", "year": 2016, "risk_score": 40.0},
+            {"country_iso3": "TUR", "year": 2018, "risk_score": 62.0},
+        ]
+    )
+    assert false_alarm_rate(scores, exclude_episodes=True) is None
+    assert false_alarm_rate(scores, exclude_episodes=False, window_years=2) == 0.5
+    assert false_alarm_rate(scores, exclude_episodes=True, threshold_points=PASS_THRESHOLD_POINTS) is None

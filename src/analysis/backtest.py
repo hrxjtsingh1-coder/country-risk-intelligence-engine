@@ -384,6 +384,62 @@ def backtest_summary(results: list[EpisodeResult]) -> BacktestSummary:
     )
 
 
+def false_alarm_rate(
+    scores: pd.DataFrame,
+    window_years: int = DEFAULT_WINDOW_YEARS,
+    threshold_points: float = PASS_THRESHOLD_POINTS,
+    exclude_episodes: bool = True,
+) -> float | None:
+    """
+    False-alarm base rate: the share of ordinary country-year windows where the
+    model's own "rise >= threshold over the detection window" rule would trip.
+
+    This is the honest companion to `detection_rate`: a high detection rate is
+    only meaningful if the rule does not also fire on plenty of times that no
+    known crisis happened. For every (country, baseline_year) in the panel we
+    measure peak-in-window minus baseline, exactly as episodes are judged, and
+    count how many clear the threshold. The return value is that share (0-1).
+
+    Episode windows are excluded by default so the known crises do not inflate
+    the base rate against themselves.
+    """
+    if not isinstance(scores, pd.DataFrame) or scores.empty:
+        return None
+
+    s = _prep(scores)
+    excluded_windows: dict[str, set[int]] = {}
+    if exclude_episodes:
+        for ep in _EPISODES:
+            iso3 = str(ep.iso3).upper()
+            excluded_windows.setdefault(iso3, set()).add(int(ep.baseline_year))
+            for year in range(int(ep.event_year) - int(ep.window_years), int(ep.event_year) + int(ep.window_years) + 1):
+                excluded_windows[iso3].add(int(year))
+
+    years = sorted(pd.to_numeric(s["year"], errors="coerce").dropna().astype(int).unique().tolist())
+    alarmed = 0
+    compared = 0
+
+    for iso3 in sorted(s["country_iso3"].dropna().unique()):
+        iso3 = str(iso3).upper()
+        country_years = excluded_windows.get(iso3, set())
+        for baseline_year in years:
+            if baseline_year in country_years:
+                continue
+            base = _score_for(s, iso3, baseline_year)
+            if base is None:
+                continue
+            peak, _ = _peak_in_window(s, iso3, baseline_year, window_years)
+            if peak is None:
+                continue
+            compared += 1
+            if peak - base >= threshold_points:
+                alarmed += 1
+
+    if compared == 0:
+        return None
+    return round(alarmed / compared, 3)
+
+
 def evaluate_panel(
     panel: pd.DataFrame,
     data_is_synthetic: bool = False,
