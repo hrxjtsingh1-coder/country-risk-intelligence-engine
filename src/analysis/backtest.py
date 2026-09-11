@@ -111,7 +111,8 @@ class EpisodeResult:
     peer_drift: float | None  # share of other panel countries that also rose >= threshold
     dominant_pillar: str | None  # pillar_<slug>_score column with the largest rise
     dominant_sector: str | None  # sector_<slug>_score column with the largest rise
-    note: str
+    lead_time: int | None = None  # years before event_year the first warning fired
+    note: str = ""
 
 
 @dataclass
@@ -124,6 +125,31 @@ class BacktestSummary:
     median_peak_delta: float | None  # median peak_delta across evaluable episodes
     systemic_episode: str | None  # highest peer_drift episode (least informative)
     highest_peer_drift: float | None  # drift fraction of the systemic_episode
+
+
+@dataclass
+class BacktestMetrics:
+    """Confusion-matrix metrics for the episode replay.
+
+    Positives are the configured episodes; negatives are every OTHER
+    country-year window in the panel (ordinary time, no known crisis).
+    A window "trips" when the model's own rise rule fires (same threshold
+    and window used to judge episodes). This mirrors the honest framing
+    of `false_alarm_rate`: there is no authoritative "non-crisis" list, so
+    these rates are indicative on a small panel.
+    """
+
+    true_positives: int  # flagged episodes
+    false_negatives: int  # missed episodes
+    false_positives: int | None  # ordinary windows that tripped
+    true_negatives: int | None  # ordinary windows that stayed quiet
+    precision: float | None  # tp / (tp + fp)
+    recall: float | None  # tp / (tp + fn) == detection_rate
+    false_positive_rate: float | None  # fp / (fp + tn)
+    false_negative_rate: float | None  # fn / (tp + fn)
+    warning_frequency: float | None  # (tp + fp) / (tp + fn + fp + tn)
+    detection_rate: float | None  # tp / (tp + fn)
+    median_lead_time: float | None  # median years of warning before event_year
 
 
 def _load_episodes() -> list[Episode]:
@@ -211,6 +237,34 @@ def _peak_in_window(
         return None, None
     peak_year, peak = max(available, key=lambda t: t[1])
     return peak, peak_year
+
+
+def _lead_time(
+    scores: pd.DataFrame,
+    iso3: str,
+    baseline_year: int,
+    event_year: int,
+    window_years: int,
+    threshold: float,
+) -> int | None:
+    """Years before event_year at which the first high-risk warning fired.
+
+    Replays the same rule used to judge the episode (rise from a year's score
+    to the event-window peak >= threshold), standing at every year from the
+    baseline to the event year instead of only at the baseline. The first such
+    year is the first warning; lead time is `event_year - that year`. None
+    means the rule never fired in the window (a missed/inconclusive episode).
+    """
+    peak, _ = _peak_in_window(scores, iso3, event_year, window_years)
+    if peak is None:
+        return None
+    for year in range(int(baseline_year), int(event_year) + 1):
+        base = _score_for(scores, iso3, year)
+        if base is None:
+            continue
+        if peak - base >= threshold:
+            return int(event_year) - year
+    return None
 
 
 def _peer_drift(
@@ -329,6 +383,9 @@ def run_backtest(
             delta = round(event_score - baseline_score, 1)
         peak_delta = round(peak_score - baseline_score, 1)
         verdict = "flagged" if peak_delta >= threshold else "missed"
+        lead_time = (
+            _lead_time(s, ep.iso3, ep.baseline_year, ep.event_year, window, threshold) if verdict == "flagged" else None
+        )
 
         results.append(
             EpisodeResult(
@@ -348,6 +405,7 @@ def run_backtest(
                 peer_drift=_peer_drift(s, ep.iso3, ep.baseline_year, ep.event_year, window, threshold),
                 dominant_pillar=_largest_rising_component(s, ep.iso3, ep.baseline_year, peak_year, "pillar_"),
                 dominant_sector=_largest_rising_component(s, ep.iso3, ep.baseline_year, peak_year, "sector_"),
+                lead_time=lead_time,
                 note=ep.note,
             )
         )
@@ -384,6 +442,58 @@ def backtest_summary(results: list[EpisodeResult]) -> BacktestSummary:
     )
 
 
+def _ordinary_window_tally(
+    scores: pd.DataFrame,
+    window_years: int = DEFAULT_WINDOW_YEARS,
+    threshold_points: float = PASS_THRESHOLD_POINTS,
+    exclude_episodes: bool = True,
+) -> tuple[int, int] | None:
+    """(alarmed, quiet) counts for ordinary country-year windows under the rise rule.
+
+    For every (country, baseline_year) that is not part of a known episode we
+    measure peak-in-window minus baseline, exactly as episodes are judged, and
+    count how many clear the threshold. This is the denominator/negative
+    population shared by `false_alarm_rate` and `backtest_metrics`.
+    Returns None when there is nothing comparable to evaluate.
+    """
+    if not isinstance(scores, pd.DataFrame) or scores.empty:
+        return None
+
+    s = _prep(scores)
+    excluded_windows: dict[str, set[int]] = {}
+    if exclude_episodes:
+        for ep in _EPISODES:
+            iso3 = str(ep.iso3).upper()
+            excluded_windows.setdefault(iso3, set()).add(int(ep.baseline_year))
+            for year in range(int(ep.event_year) - int(ep.window_years), int(ep.event_year) + int(ep.window_years) + 1):
+                excluded_windows[iso3].add(int(year))
+
+    years = sorted(pd.to_numeric(s["year"], errors="coerce").dropna().astype(int).unique().tolist())
+    alarmed = 0
+    quiet = 0
+
+    for iso3 in sorted(s["country_iso3"].dropna().unique()):
+        iso3 = str(iso3).upper()
+        country_years = excluded_windows.get(iso3, set())
+        for baseline_year in years:
+            if baseline_year in country_years:
+                continue
+            base = _score_for(s, iso3, baseline_year)
+            if base is None:
+                continue
+            peak, _ = _peak_in_window(s, iso3, baseline_year, window_years)
+            if peak is None:
+                continue
+            if peak - base >= threshold_points:
+                alarmed += 1
+            else:
+                quiet += 1
+
+    if alarmed + quiet == 0:
+        return None
+    return alarmed, quiet
+
+
 def false_alarm_rate(
     scores: pd.DataFrame,
     window_years: int = DEFAULT_WINDOW_YEARS,
@@ -403,41 +513,77 @@ def false_alarm_rate(
     Episode windows are excluded by default so the known crises do not inflate
     the base rate against themselves.
     """
-    if not isinstance(scores, pd.DataFrame) or scores.empty:
+    tally = _ordinary_window_tally(scores, window_years, threshold_points, exclude_episodes)
+    if tally is None:
         return None
+    alarmed, quiet = tally
+    return round(alarmed / (alarmed + quiet), 3)
 
-    s = _prep(scores)
-    excluded_windows: dict[str, set[int]] = {}
-    if exclude_episodes:
-        for ep in _EPISODES:
-            iso3 = str(ep.iso3).upper()
-            excluded_windows.setdefault(iso3, set()).add(int(ep.baseline_year))
-            for year in range(int(ep.event_year) - int(ep.window_years), int(ep.event_year) + int(ep.window_years) + 1):
-                excluded_windows[iso3].add(int(year))
 
-    years = sorted(pd.to_numeric(s["year"], errors="coerce").dropna().astype(int).unique().tolist())
-    alarmed = 0
-    compared = 0
+def backtest_metrics(
+    results: list[EpisodeResult],
+    scores: pd.DataFrame,
+    window_years: int = DEFAULT_WINDOW_YEARS,
+    threshold_points: float = PASS_THRESHOLD_POINTS,
+    exclude_episodes: bool = True,
+) -> BacktestMetrics:
+    """Confusion-matrix metrics for the episode replay.
 
-    for iso3 in sorted(s["country_iso3"].dropna().unique()):
-        iso3 = str(iso3).upper()
-        country_years = excluded_windows.get(iso3, set())
-        for baseline_year in years:
-            if baseline_year in country_years:
-                continue
-            base = _score_for(s, iso3, baseline_year)
-            if base is None:
-                continue
-            peak, _ = _peak_in_window(s, iso3, baseline_year, window_years)
-            if peak is None:
-                continue
-            compared += 1
-            if peak - base >= threshold_points:
-                alarmed += 1
+    Episodes that can be scored are the positives (flagged = TP, missed = FN);
+    ordinary country-year windows are the negatives (tripped = FP, quiet = TN),
+    reusing the same tally as `false_alarm_rate`. `detection_rate` == `recall`
+    -- both are TP/(TP+FN); they are exposed separately so the page can label
+    the hit rate and the classifier metric beside each other.
+    """
+    tp = sum(1 for r in results if r.verdict == "flagged")
+    fn = sum(1 for r in results if r.verdict == "missed")
 
-    if compared == 0:
-        return None
-    return round(alarmed / compared, 3)
+    tally = _ordinary_window_tally(scores, window_years, threshold_points, exclude_episodes)
+    fp: int | None
+    tn: int | None
+    if tally is None:
+        fp = None
+        tn = None
+    else:
+        fp, tn = tally
+
+    evaluated = tp + fn
+    recall = round(tp / evaluated, 3) if evaluated else None
+    detection_rate = recall
+    false_negative_rate = round(fn / evaluated, 3) if evaluated else None
+
+    # Precision / FPR / warning frequency are only defined when there is a
+    # negative population to measure false alarms against.
+    precision: float | None = None
+    if fp is not None and (tp + fp) > 0:
+        precision = round(tp / (tp + fp), 3)
+
+    false_positive_rate: float | None = None
+    if fp is not None and tn is not None and (fp + tn) > 0:
+        false_positive_rate = round(fp / (fp + tn), 3)
+
+    warning_frequency: float | None = None
+    if fp is not None and tn is not None:
+        total = evaluated + fp + tn
+        if total > 0:
+            warning_frequency = round((tp + fp) / total, 3)
+
+    leads = [r.lead_time for r in results if r.lead_time is not None]
+    median_lead_time = round(float(pd.Series(leads).median()), 1) if leads else None
+
+    return BacktestMetrics(
+        true_positives=tp,
+        false_negatives=fn,
+        false_positives=fp,
+        true_negatives=tn,
+        precision=precision,
+        recall=recall,
+        false_positive_rate=false_positive_rate,
+        false_negative_rate=false_negative_rate,
+        warning_frequency=warning_frequency,
+        detection_rate=detection_rate,
+        median_lead_time=median_lead_time,
+    )
 
 
 def evaluate_panel(
@@ -512,10 +658,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Least informative: {summary.systemic_episode} (peer drift {summary.highest_peer_drift})")
 
     if args.json:
+        metrics = backtest_metrics(results, scores)
         payload = {
             "mode": args.mode,
             "synthetic": args.mode == "demo",
             "summary": asdict(summary),
+            "metrics": asdict(metrics),
             "episodes": [asdict(r) for r in results],
         }
         out = Path(args.json)

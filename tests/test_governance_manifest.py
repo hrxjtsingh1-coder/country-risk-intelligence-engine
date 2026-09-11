@@ -58,13 +58,20 @@ def test_manifest_json_schema(tmp_path):
     payload = json.loads(out.read_text(encoding="utf-8"))
     assert payload["format"] == mf.FORMAT_ID
     assert payload["schema_version"] == mf.SCHEMA_VERSION
-    assert payload["methodology_version"] == "2.0.0"
+    assert payload["methodology_version"] == "2.1.0"
     assert payload["dataset_mode"] == "demo"
     assert payload["env"]["python"]
     assert payload["signoff"]["signed_by"] == "Tester"
     assert payload["files"]
     assert payload["model"]["coverage"]["status"]
-    assert set(payload["model"]["backtest"]) >= {"detection_rate", "flagged", "missed", "inconclusive"}
+    assert set(payload["model"]["backtest"]) >= {
+        "detection_rate",
+        "flagged",
+        "missed",
+        "inconclusive",
+        "median_lead_time",
+        "precision",
+    }
 
 
 def test_cli_build_and_verify(tmp_path, capsys):

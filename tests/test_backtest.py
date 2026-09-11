@@ -6,6 +6,7 @@ from src.analysis import backtest
 from src.analysis.backtest import (
     EPISODES,
     PASS_THRESHOLD_POINTS,
+    backtest_metrics,
     backtest_summary,
     false_alarm_rate,
     run_backtest,
@@ -22,6 +23,7 @@ def test_backtest_flags_a_real_rise():
     scores = pd.DataFrame(
         [
             {"country_iso3": "TUR", "year": 2016, "risk_score": 40.0},
+            {"country_iso3": "TUR", "year": 2017, "risk_score": 50.0},
             {"country_iso3": "TUR", "year": 2018, "risk_score": 62.0},
         ]
     )
@@ -29,6 +31,38 @@ def test_backtest_flags_a_real_rise():
     assert results["TUR"].verdict == "flagged"
     assert results["TUR"].delta == 22.0
     assert results["TUR"].peak_delta == 22.0
+    # The rule already fired from 2016 -> warning 2 years before the 2018 event.
+    assert results["TUR"].lead_time == 2
+
+
+def test_backtest_lead_time_late_overshoot():
+    # BRA: baseline 2013 calm, event 2016 mild, peak overshoots in the window (2017).
+    # The rule already fires from the baseline -> warning 3 years before the event.
+    scores = pd.DataFrame(
+        [
+            {"country_iso3": "BRA", "year": 2013, "risk_score": 40.0},
+            {"country_iso3": "BRA", "year": 2016, "risk_score": 42.0},
+            {"country_iso3": "BRA", "year": 2017, "risk_score": 45.0},
+        ]
+    )
+    results = {r.iso3: r for r in run_backtest(scores, data_is_synthetic=False)}
+    r = results["BRA"]
+    assert r.verdict == "flagged"
+    assert r.peak_delta == 5.0
+    assert r.peak_year == 2017
+    assert r.lead_time == 3
+
+
+def test_backtest_lead_time_none_for_missed():
+    scores = pd.DataFrame(
+        [
+            {"country_iso3": "TUR", "year": 2016, "risk_score": 40.0},
+            {"country_iso3": "TUR", "year": 2018, "risk_score": 41.0},
+        ]
+    )
+    r = {x.iso3: x for x in run_backtest(scores, data_is_synthetic=False)}["TUR"]
+    assert r.verdict == "missed"
+    assert r.lead_time is None
 
 
 def test_backtest_misses_a_flat_score():
@@ -213,3 +247,52 @@ def test_false_alarm_rate_excludes_episode_windows_by_default():
     assert false_alarm_rate(scores, exclude_episodes=True) is None
     assert false_alarm_rate(scores, exclude_episodes=False, window_years=2) == 0.5
     assert false_alarm_rate(scores, exclude_episodes=True, threshold_points=PASS_THRESHOLD_POINTS) is None
+
+
+def test_backtest_metrics_empty_scores():
+    m = backtest_metrics([], pd.DataFrame())
+    assert m.true_positives == 0
+    assert m.false_negatives == 0
+    assert m.precision is None
+    assert m.recall is None
+
+
+def test_backtest_metrics_perfect_confusion_matrix():
+    # TUR flagged (real crisis), USA/CAN ordinary years stay quiet -> TP, no FP.
+    scores = pd.DataFrame(
+        [
+            {"country_iso3": "TUR", "year": 2016, "risk_score": 40.0},
+            {"country_iso3": "TUR", "year": 2018, "risk_score": 62.0},
+        ]
+        + [{"country_iso3": "USA", "year": y, "risk_score": 50.0} for y in (2015, 2016, 2017, 2018, 2019)]
+        + [{"country_iso3": "CAN", "year": y, "risk_score": 50.0} for y in (2015, 2016, 2017, 2018, 2019)]
+    )
+    results = [r for r in run_backtest(scores, data_is_synthetic=False)]
+    m = backtest_metrics(results, scores)
+    assert m.true_positives >= 1
+    assert m.false_negatives == 0
+    assert m.recall == 1.0
+    assert m.precision == 1.0
+    assert m.false_positive_rate == 0.0
+    assert m.false_negative_rate == 0.0
+
+
+def test_backtest_metrics_reports_miss_and_lead_time():
+    # TUR flagged, ZAF missed, plus quiet ordinary years -> recall < 1, FNR > 0.
+    scores = pd.DataFrame(
+        [
+            {"country_iso3": "TUR", "year": 2016, "risk_score": 40.0},
+            {"country_iso3": "TUR", "year": 2018, "risk_score": 60.0},
+            {"country_iso3": "ZAF", "year": 2017, "risk_score": 40.0},
+            {"country_iso3": "ZAF", "year": 2020, "risk_score": 41.0},
+        ]
+        + [{"country_iso3": "USA", "year": y, "risk_score": 50.0} for y in (2015, 2016, 2017, 2018, 2019)]
+    )
+    results = run_backtest(scores, data_is_synthetic=False)
+    m = backtest_metrics(results, scores)
+    assert m.true_positives == 1
+    assert m.false_negatives == 1
+    assert m.recall == 0.5
+    assert m.false_negative_rate == 0.5
+    assert m.median_lead_time is not None
+    assert m.warning_frequency is not None

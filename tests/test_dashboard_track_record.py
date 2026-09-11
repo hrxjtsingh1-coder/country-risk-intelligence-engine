@@ -48,6 +48,20 @@ def test_track_record_shows_hit_rate_and_false_alarm_rate(monkeypatch):
     assert "FLAGGED" in body and "MISSED" in body
 
 
+def test_track_record_shows_quantitative_metrics(monkeypatch):
+    app = _switched_app(monkeypatch)
+    app.radio[0].set_value("Track Record & Model Validation").run(timeout=120)
+    body = "\n".join(str(m.value) for m in app.markdown if m.value)
+
+    # New confusion-matrix + lead-time KPIs are rendered, not just the hit rate.
+    assert "MEDIAN LEAD TIME" in body
+    assert "PRECISION" in body
+    assert "RECALL" in body
+    assert "FALSE-POSITIVE RATE" in body
+    assert "FALSE-NEGATIVE RATE" in body
+    assert "WARNING FREQUENCY" in body
+
+
 def test_track_record_page_shows_the_relevant_episode_verdicts(monkeypatch):
     app = _switched_app(monkeypatch)
     app.radio[0].set_value("Track Record & Model Validation").run(timeout=120)

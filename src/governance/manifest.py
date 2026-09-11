@@ -36,13 +36,13 @@ from typing import Any
 
 import pandas as pd
 
-from src.analysis.backtest import backtest_summary, run_backtest
+from src.analysis.backtest import backtest_metrics, backtest_summary, run_backtest
 from src.governance.coverage import verify_model_coverage
 from src.scoring import risk_score as rs
 
 ROOT = Path(__file__).resolve().parents[2]
 
-METHODOLOGY_VERSION = "2.0.0"  # sector (super-pillar) layer + full backtest harness
+METHODOLOGY_VERSION = "2.1.0"  # + backtest lead time / precision-recall metrics
 
 MANIFEST_PATH = ROOT / "data" / "processed" / "manifest.json"
 FORMAT_ID = "country-risk-manifest"
@@ -128,6 +128,7 @@ def _model_state(panel: pd.DataFrame, dataset_mode: str, scores: pd.DataFrame | 
         scores, _drivers, _pillars = rs.score_panel(panel)
     bt_results = run_backtest(scores, data_is_synthetic=(dataset_mode == "demo"))
     bt_summary = backtest_summary(bt_results)
+    bt_metrics = backtest_metrics(bt_results, scores)
     return {
         "methodology_version": METHODOLOGY_VERSION,
         "sector_composite_weight": _load_scoring_weight(),
@@ -147,6 +148,12 @@ def _model_state(panel: pd.DataFrame, dataset_mode: str, scores: pd.DataFrame | 
             "inconclusive": bt_summary.inconclusive,
             "detection_rate": bt_summary.detection_rate,
             "median_peak_delta": bt_summary.median_peak_delta,
+            "median_lead_time": bt_metrics.median_lead_time,
+            "precision": bt_metrics.precision,
+            "recall": bt_metrics.recall,
+            "false_positive_rate": bt_metrics.false_positive_rate,
+            "false_negative_rate": bt_metrics.false_negative_rate,
+            "warning_frequency": bt_metrics.warning_frequency,
         },
     }
 
