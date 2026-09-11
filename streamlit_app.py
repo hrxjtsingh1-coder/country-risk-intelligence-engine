@@ -25,7 +25,6 @@ Streamlit runs that file as the entrypoint itself and this indirection
 isn't needed at all. This wrapper exists so the app also works unmodified
 if your deployment expects a root-level `streamlit_app.py`.
 """
-
 import runpy
 from pathlib import Path
 
