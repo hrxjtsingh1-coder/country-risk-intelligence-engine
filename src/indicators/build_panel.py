@@ -96,7 +96,12 @@ def _session() -> requests.Session:
             "Accept": "application/json,text/csv;q=0.9,*/*;q=0.8",
         }
     )
-    retry = Retry(total=3, backoff_factor=0.5, status_forcelist=(429, 500, 502, 503, 504), allowed_methods=("GET",))
+    retry = Retry(
+        total=4,
+        backoff_factor=0.5,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=("GET",),
+    )
     session.mount("https://", HTTPAdapter(max_retries=retry))
     return session
 
@@ -268,7 +273,7 @@ def _world_bank_indicator_batch(
         url = WB_URL.format(country=";".join(chunk), indicator=wb_code)
         params: dict[str, str | int] = {"format": "json", "per_page": 20000, "date": f"{start}:{end}"}
 
-        response = session.get(url, params=params, timeout=30)
+        response = session.get(url, params=params, timeout=90)
         response.raise_for_status()
         payload = response.json()
 
