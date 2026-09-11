@@ -41,6 +41,7 @@ class Context:
     run_scenario_btn: bool = False
 
     using_demo_data: bool = False
+    using_cached_data: bool = False
     live_provenance: Any = None
     generated_at: str = ""
 

@@ -19,6 +19,8 @@ you tweak them without re-running the full pipeline).
 
 from __future__ import annotations
 
+import concurrent.futures
+import os
 import sys
 import textwrap
 from datetime import datetime
@@ -182,25 +184,79 @@ def _manifest_short_hash() -> str:
     return ""
 
 
+# Wall-clock budget for a live World Bank attempt. The dashboard must load
+# within a few seconds even when WB is slow or down, so instead of a
+# dead-end screen the app falls back to the last successful pipeline panel
+# (CACHED) or the demo dataset (DEMO). Overridable for slow/spotty networks.
+LIVE_FETCH_TIMEOUT_SECONDS = float(os.environ.get("COUNTRY_RISK_LIVE_TIMEOUT_SECONDS", "6"))
+
+
+def _is_offline() -> bool:
+    return os.environ.get("COUNTRY_RISK_OFFLINE", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _fetch_live_bounded(
+    iso3_codes: tuple, start_year: int, end_year: int, config_version: str
+):
+    """Run a live fetch with a strict wall-clock budget.
+
+    The requests layer already gives each call its own timeout + retry, but a
+    slow World Bank endpoint can still stretch that to minutes across many
+    calls. Bounding the whole attempt here is what guarantees the app loads
+    quickly; a timed-out attempt is reported as LiveDataUnavailable so the
+    caller can fall back to cached/demo data instead of hanging the UI.
+    """
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="cri-live")
+    future = executor.submit(fetch_live_panel, list(iso3_codes), indicators_cfg, start_year, end_year, config_version)
+    try:
+        result = future.result(timeout=LIVE_FETCH_TIMEOUT_SECONDS)
+    except concurrent.futures.TimeoutError as exc:
+        executor.shutdown(wait=False)
+        raise LiveDataUnavailable(
+            "The live World Bank fetch did not finish within the dashboard's load budget.",
+            technical_detail=(
+                f"live fetch exceeded the {LIVE_FETCH_TIMEOUT_SECONDS:.0f}s wall-clock budget "
+                "(set COUNTRY_RISK_LIVE_TIMEOUT_SECONDS to raise it); "
+                "showing the last successful pipeline panel instead."
+            ),
+        ) from exc
+    executor.shutdown(wait=True)
+    return result
+
+
 @st.cache_data(ttl=data_state.LIVE_CACHE_TTL_SECONDS, show_spinner=False)
 def _cached_fetch_live(iso3_codes: tuple, start_year: int, end_year: int, config_version: str):
-    return fetch_live_panel(list(iso3_codes), indicators_cfg, start_year, end_year, config_version)
+    return _fetch_live_bounded(iso3_codes, start_year, end_year, config_version)
 
 
 if "data_mode" not in st.session_state:
     st.session_state.data_mode = None  # unset -> attempt live below
 
-live_result = None
-live_error = None
-
-if st.session_state.data_mode != data_state.DEMO:
+if st.session_state.data_mode is None:
     try:
         with st.spinner("Connecting to World Bank..."):
-            live_result = _cached_fetch_live(COUNTRY_ISO3_LIST, LIVE_START_YEAR, LIVE_END_YEAR, _config_version())
+            _live_result = _cached_fetch_live(
+                COUNTRY_ISO3_LIST, LIVE_START_YEAR, LIVE_END_YEAR, _config_version()
+            )
+        st.session_state.live_result = _live_result
+        st.session_state.live_error = None
         st.session_state.data_mode = data_state.LIVE
     except LiveDataUnavailable as exc:
-        live_error = exc
-        st.session_state.data_mode = data_state.UNAVAILABLE
+        st.session_state.live_result = None
+        st.session_state.live_error = exc
+        if _is_offline():
+            # Explicit offline/dev signal: keep the explicit demo-selection
+            # dead-end rather than silently substituting data.
+            st.session_state.data_mode = data_state.UNAVAILABLE
+        elif PANEL_PATH.exists():
+            st.session_state.data_mode = data_state.CACHED
+        elif DEMO_PANEL_PATH.exists():
+            st.session_state.data_mode = data_state.DEMO
+        else:
+            st.session_state.data_mode = data_state.UNAVAILABLE
+
+live_result = st.session_state.get("live_result")
+live_error = st.session_state.get("live_error")
 
 if st.session_state.data_mode == data_state.UNAVAILABLE:
     st.markdown(
@@ -229,6 +285,7 @@ if st.session_state.data_mode == data_state.UNAVAILABLE:
     st.stop()
 
 USING_DEMO_DATA = st.session_state.data_mode == data_state.DEMO
+USING_CACHED_DATA = st.session_state.data_mode == data_state.CACHED
 live_provenance = None
 
 if USING_DEMO_DATA:
@@ -240,7 +297,26 @@ if USING_DEMO_DATA:
         "DEMO DATA — SYNTHETIC DATASET. For interface / methodology "
         "demonstration only — these are not real economic observations."
     )
+elif USING_CACHED_DATA:
+    if not PANEL_PATH.exists():
+        st.session_state.data_mode = data_state.UNAVAILABLE
+        st.rerun()
+    panel = load_panel(PANEL_PATH)
+    if live_error is not None:
+        st.warning(
+            f"USING CACHED DATA — the live World Bank fetch was unavailable or "
+            f"too slow, so this view shows the last successful pipeline panel "
+            f"instead of freshly fetched data. {str(live_error)}"
+        )
+    else:
+        st.warning(
+            "USING CACHED DATA — showing the last successful pipeline panel; "
+            "the live World Bank fetch was unavailable or too slow."
+        )
 else:
+    if live_result is None:
+        st.error("No data source is available.")
+        st.stop()
     panel = live_result.wide_panel
     live_provenance = live_result.provenance
 
@@ -253,7 +329,7 @@ with st.sidebar:
     st.markdown(
         f"""
         <div style="padding:4px 4px 16px;">
-            <div class="kicker">RISK ENGINE / {("DEMO PANEL" if USING_DEMO_DATA else "LIVE PANEL")}</div>
+            <div class="kicker">RISK ENGINE / {("DEMO PANEL" if USING_DEMO_DATA else ("CACHED PANEL" if USING_CACHED_DATA else "LIVE PANEL"))}</div>
             <div style="font-family:'Space Grotesk';font-size:21px;font-weight:700;">
                 Control Room
             </div>
@@ -347,9 +423,22 @@ with st.sidebar:
         if USING_DEMO_DATA:
             if st.button("Return to Live Data", width="stretch"):
                 st.session_state.data_mode = None
+                st.session_state.live_result = None
+                st.session_state.live_error = None
+                _cached_fetch_live.clear()
+                st.rerun()
+        elif USING_CACHED_DATA:
+            if st.button("↻ Retry Live Data", width="stretch"):
+                st.session_state.data_mode = None
+                st.session_state.live_result = None
+                st.session_state.live_error = None
+                _cached_fetch_live.clear()
                 st.rerun()
         else:
             if st.button("↻ Refresh Live Data", width="stretch"):
+                st.session_state.data_mode = None
+                st.session_state.live_result = None
+                st.session_state.live_error = None
                 _cached_fetch_live.clear()
                 st.rerun()
 
@@ -519,6 +608,13 @@ if USING_DEMO_DATA:
     data_verified = False
     provenance_sources = ""
     provenance_asof = ""
+elif USING_CACHED_DATA:
+    data_verified = False
+    provenance_sources = "Cached pipeline panel"
+    try:
+        provenance_asof = datetime.fromtimestamp(PANEL_PATH.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+    except OSError:
+        provenance_asof = ""
 elif live_provenance is not None:
     data_verified = True
     _prov_sources = getattr(live_provenance, "sources", None) or []
@@ -570,6 +666,7 @@ ctx = Context(
     shock=shock,
     run_scenario_btn=run_scenario_btn,
     using_demo_data=USING_DEMO_DATA,
+    using_cached_data=USING_CACHED_DATA,
     live_provenance=live_provenance,
     generated_at=generated_at,
     peer_percentile=peer_info.get("percentile"),

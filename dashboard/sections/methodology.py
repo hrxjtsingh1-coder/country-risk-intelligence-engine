@@ -177,6 +177,21 @@ them correlational and honestly weak with a small country/year sample —
 the R² and observation count shown with every scenario result are there so
 you can judge that for yourself, not so you can ignore them.
 
+**Known structural limitations.**
+Five episodes from the 17-episode real-data backtest are accepted as genuine
+misses, not "near misses" — three structural gaps explain all of them:
+    • *No market/sovereign-yield indicator.* GBR 2022 (gilt crisis) is the
+      clearest example: a real sovereign-bond shock with no series in the
+      panel to detect it. Future work: add a sovereign-spread or CDS index.
+    • *Incomplete debt-level coverage.* ITA 2018 and GRC 2015 both have
+      public-debt-trajectory series largely missing; the fiscal pillar saw
+      only a stable or improving budget balance at the time.
+    • *Baseline anchoring / gradual deterioration.* MEX 2017's largest FX
+      shock (−19.2%) sits in the baseline year 2015, leaving a modest 2017
+      residual; IDN 2018 moved in the right direction but too gradually to
+      cross the threshold. These are not analytically wrong, just
+      under-sensitive by design.
+
 ---
 
 **How this compares to real practice.** This borrows structurally from how

@@ -351,6 +351,14 @@ def provenance_line(ctx: Any) -> str:
             bits.append(f"manifest {ctx.manifest_hash}")
         return '<div class="provenance-line" style="color:var(--orange,#ff9f5b);">' + " · ".join(bits) + "</div>"
 
+    if getattr(ctx, "using_cached_data", False):
+        bits = ["CACHED DATA", "not freshly verified"]
+        if ctx.provenance_sources:
+            bits.append(ctx.provenance_sources)
+        if ctx.manifest_hash:
+            bits.append(f"manifest {ctx.manifest_hash}")
+        return '<div class="provenance-line" style="color:var(--orange,#ff9f5b);">' + " · ".join(bits) + "</div>"
+
     status = "VERIFIED ✓" if ctx.data_verified else "VERIFIED"
     parts = [status]
     if ctx.provenance_sources:
