@@ -23,6 +23,7 @@ import concurrent.futures
 import os
 import sys
 import textwrap
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -202,14 +203,24 @@ def _fetch_live_bounded(iso3_codes: tuple, start_year: int, end_year: int, confi
     slow World Bank endpoint can still stretch that to minutes across many
     calls. Bounding the whole attempt here is what guarantees the app loads
     quickly; a timed-out attempt is reported as LiveDataUnavailable so the
-    caller can fall back to cached/demo data instead of hanging the UI.
+    caller can fall back to cached/demo data instead of hanging the UI. The
+    worker thread is daemonic so an abandoned slow fetch never blocks app or
+    process shutdown.
     """
-    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="cri-live")
-    future = executor.submit(fetch_live_panel, list(iso3_codes), indicators_cfg, start_year, end_year, config_version)
+    future: concurrent.futures.Future = concurrent.futures.Future()
+
+    def _run_fetch() -> None:
+        try:
+            result = fetch_live_panel(list(iso3_codes), indicators_cfg, start_year, end_year, config_version)
+            future.set_result(result)
+        except BaseException as exc:  # noqa: BLE001 - propagate whatever the fetch raises
+            future.set_exception(exc)
+
+    threading.Thread(target=_run_fetch, daemon=True, name="cri-live").start()
+
     try:
-        result = future.result(timeout=LIVE_FETCH_TIMEOUT_SECONDS)
+        return future.result(timeout=LIVE_FETCH_TIMEOUT_SECONDS)
     except concurrent.futures.TimeoutError as exc:
-        executor.shutdown(wait=False)
         raise LiveDataUnavailable(
             "The live World Bank fetch did not finish within the dashboard's load budget.",
             technical_detail=(
@@ -218,8 +229,6 @@ def _fetch_live_bounded(iso3_codes: tuple, start_year: int, end_year: int, confi
                 "showing the last successful pipeline panel instead."
             ),
         ) from exc
-    executor.shutdown(wait=True)
-    return result
 
 
 @st.cache_data(ttl=data_state.LIVE_CACHE_TTL_SECONDS, show_spinner=False)

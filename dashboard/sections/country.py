@@ -93,6 +93,23 @@ def render_provenance(ctx: Context) -> None:
             """,
             unsafe_allow_html=True,
         )
+    elif getattr(ctx, "using_cached_data", False):
+        st.markdown(
+            f"""
+            <div class="card" style="margin-top:18px;">
+                <div class="card-label">CACHED DATA</div>
+                <div class="card-value" style="font-size:18px;">
+                    {esc(ctx.provenance_sources or "Cached pipeline panel")}
+                </div>
+                <div class="card-caption" style="margin-top:6px;">
+                    Not freshly fetched this session — showing the last successful pipeline
+                    panel because the live World Bank fetch was unavailable or too slow.
+                    {esc(f"As of {ctx.provenance_asof}") if ctx.provenance_asof else ""}
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
     else:
         prov = ctx.live_provenance
         source_names = " · ".join(s["name"] for s in prov.sources) if prov else "—"
