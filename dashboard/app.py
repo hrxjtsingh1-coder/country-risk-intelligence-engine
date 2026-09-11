@@ -165,6 +165,19 @@ def _config_version() -> str:
     return hashlib.sha256(payload).hexdigest()[:10]
 
 
+def _manifest_short_hash() -> str:
+    """Best-effort short sha256 of the pipeline manifest, so the footer can
+    prove the displayed numbers come from the exact pipeline run at a hash.
+    The manifest lives under the gitignored data/processed dir and may not
+    exist on demo-only installs — fall back to the config version."""
+    import hashlib
+
+    manifest_path = Path("data/processed/manifest.json")
+    if manifest_path.exists():
+        return hashlib.sha256(manifest_path.read_bytes()).hexdigest()[:8]
+    return ""
+
+
 @st.cache_data(ttl=data_state.LIVE_CACHE_TTL_SECONDS, show_spinner=False)
 def _cached_fetch_live(iso3_codes: tuple, start_year: int, end_year: int, config_version: str):
     return fetch_live_panel(list(iso3_codes), indicators_cfg, start_year, end_year, config_version)
@@ -494,6 +507,26 @@ report = generate_report(
 )
 
 
+# Provenance surfaced under every score and chart: where the numbers came
+# from and which exact pipeline manifest hash produced them. Demo data is
+# labeled honestly as synthetic and never presented as verified.
+if USING_DEMO_DATA:
+    data_verified = False
+    provenance_sources = ""
+    provenance_asof = ""
+elif live_provenance is not None:
+    data_verified = True
+    _prov_sources = getattr(live_provenance, "sources", None) or []
+    provenance_sources = ", ".join(str(s.get("name")) for s in _prov_sources if isinstance(s, dict) and s.get("name"))
+    provenance_asof = str(getattr(live_provenance, "retrieved_at", "") or "")
+else:
+    data_verified = False
+    provenance_sources = ""
+    provenance_asof = ""
+
+manifest_hash = _manifest_short_hash()
+
+
 # ============================================================================
 # SHARED CONTEXT + PAGE COMPOSITION
 #
@@ -528,6 +561,10 @@ ctx = Context(
     using_demo_data=USING_DEMO_DATA,
     live_provenance=live_provenance,
     generated_at=generated_at,
+    data_verified=data_verified,
+    provenance_sources=provenance_sources,
+    provenance_asof=provenance_asof,
+    manifest_hash=manifest_hash,
 )
 
 _RENDER_SECTIONS = [
@@ -557,7 +594,10 @@ if page != "Overview":
         <div class="footer">
             <span>COUNTRY RISK INTELLIGENCE ENGINE</span>
             <span>{esc(ctx.iso)} / {int(ctx.year)} · ANALYTICAL CORE INTACT</span>
-            <span>UI BUILD · {ctx.generated_at}</span>
+            <span>
+                UI BUILD · {ctx.generated_at}
+                {f" · MANIFEST {esc(ctx.manifest_hash)}" if ctx.manifest_hash else ""}
+            </span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -577,7 +617,10 @@ st.markdown(
     <div class="footer">
         <span>COUNTRY RISK INTELLIGENCE ENGINE</span>
         <span>{esc(ctx.iso)} / {int(ctx.year)} · ANALYTICAL CORE INTACT</span>
-        <span>UI BUILD · {ctx.generated_at}</span>
+        <span>
+            UI BUILD · {ctx.generated_at}
+            {f" · MANIFEST {esc(ctx.manifest_hash)}" if ctx.manifest_hash else ""}
+        </span>
     </div>
     """,
     unsafe_allow_html=True,

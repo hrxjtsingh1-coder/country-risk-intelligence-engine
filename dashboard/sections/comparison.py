@@ -21,6 +21,7 @@ from dashboard.ui import (
     fmt_number,
     get_country_label,
     plotly_chart,
+    render_provenance_line,
     safe_float,
 )
 
@@ -112,6 +113,7 @@ def render_peer_comparison(ctx: Context) -> None:
                 height=max(360, min(620, 130 + 24 * len(peer_fig.data[0].y))),
                 margin=dict(l=8, r=8, t=20, b=8),
             )
+            render_provenance_line(ctx)
 
     with peer_right:
         st.markdown('<div class="card">', unsafe_allow_html=True)
@@ -297,3 +299,5 @@ def render_deterioration_watch(ctx: Context) -> None:
             st.markdown("</div>", unsafe_allow_html=True)
     else:
         empty_state("Deterioration watch needs at least two years of scored data across the panel.")
+
+    render_provenance_line(ctx)

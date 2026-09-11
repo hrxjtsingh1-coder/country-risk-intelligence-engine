@@ -43,3 +43,16 @@ class Context:
     using_demo_data: bool = False
     live_provenance: Any = None
     generated_at: str = ""
+
+    # Peer-group relative standing for the selected country-year.
+    peer_percentile: float | None = None
+    peer_riskier_share: int | None = None
+    peer_rank: int | None = None
+    peer_n: int = 0
+    peer_group_name: str = ""
+
+    # Data provenance surfaced next to every score/chart.
+    data_verified: bool = False
+    provenance_sources: str = ""
+    provenance_asof: str = ""
+    manifest_hash: str = ""

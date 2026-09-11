@@ -20,6 +20,7 @@ from dashboard.ui import (
     esc,
     fmt_delta,
     fmt_number,
+    render_provenance_line,
     safe_float,
     score_band,
     user_error,
@@ -263,3 +264,5 @@ def render_scenario_laboratory(ctx: Context) -> None:
         empty_state(
             "Choose a named preset, or set a non-zero policy-rate shock, to explore the scenario engine output."
         )
+
+    render_provenance_line(ctx)

@@ -332,3 +332,38 @@ def plotly_chart(fig: go.Figure, height=360, margin: dict[str, Any] | None = Non
         width="stretch",
         config=CHART_CONFIG,
     )
+
+
+def provenance_line(ctx: Any) -> str:
+    """The small 'Verified · Source · as of · manifest' footer shown under scores/charts.
+
+    Demo mode is labeled honestly as synthetic — it is never presented as
+    verified public data.
+    """
+    from dashboard.context import Context  # local import to avoid a cycle
+
+    if not isinstance(ctx, Context):
+        return ""
+
+    if ctx.using_demo_data:
+        bits = ["DEMO DATA — SYNTHETIC", "not verified"]
+        if ctx.manifest_hash:
+            bits.append(f"manifest {ctx.manifest_hash}")
+        return '<div class="provenance-line" style="color:var(--orange,#ff9f5b);">' + " · ".join(bits) + "</div>"
+
+    status = "VERIFIED ✓" if ctx.data_verified else "VERIFIED"
+    parts = [status]
+    if ctx.provenance_sources:
+        parts.append(f"SOURCE: {ctx.provenance_sources}")
+    if ctx.provenance_asof:
+        parts.append(f"AS OF: {ctx.provenance_asof}")
+    if ctx.manifest_hash:
+        parts.append(f"MANIFEST: {ctx.manifest_hash}")
+    return '<div class="provenance-line">' + " · ".join(parts) + "</div>"
+
+
+def render_provenance_line(ctx: Any) -> None:
+    """Emit the provenance footer line (used under every score and chart)."""
+    body = provenance_line(ctx)
+    if body:
+        st.markdown(body, unsafe_allow_html=True)

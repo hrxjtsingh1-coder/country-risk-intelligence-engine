@@ -28,6 +28,7 @@ from dashboard.ui import (
     CHART_CONFIG,
     esc,
     get_country_label,
+    render_provenance_line,
     score_band,
 )
 
@@ -301,6 +302,7 @@ def render_map(ctx: Context) -> None:
         selection_mode="points",
         config=CHART_CONFIG,
     )
+    render_provenance_line(ctx)
 
     if selection is not None:
         sel = getattr(selection, "selection", selection)

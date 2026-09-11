@@ -25,6 +25,7 @@ from dashboard.ui import (
     get_country_label,
     markdown_to_html,
     plotly_chart,
+    render_provenance_line,
     safe_float,
     score_pct,
 )
@@ -74,6 +75,8 @@ def render_hero(ctx: Context) -> None:
         """,
         unsafe_allow_html=True,
     )
+
+    render_provenance_line(ctx)
 
 
 def render_provenance(ctx: Context) -> None:
@@ -248,6 +251,8 @@ def render_kpi(ctx: Context) -> None:
             """,
             unsafe_allow_html=True,
         )
+
+    render_provenance_line(ctx)
 
 
 def render_interpretation(ctx: Context) -> None:
@@ -433,6 +438,7 @@ def render_trajectory(ctx: Context) -> None:
             fig.update_yaxes(range=[0, 100], title="Risk score")
             fig.update_xaxes(title="Year")
             plotly_chart(fig, height=410)
+            render_provenance_line(ctx)
 
 
 def render_drivers(ctx: Context) -> None:

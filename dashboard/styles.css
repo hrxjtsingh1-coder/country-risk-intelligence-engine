@@ -747,6 +747,17 @@ div[data-testid="stDataFrame"] {
     font-size: 9px;
 }
 
+.provenance-line {
+    font-family: "DM Mono", monospace;
+    font-size: 9px;
+    letter-spacing: .06em;
+    color: var(--green);
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+    margin: 14px 0 2px;
+    opacity: .92;
+}
+
 .empty {
     min-height: 130px;
     display: grid;
