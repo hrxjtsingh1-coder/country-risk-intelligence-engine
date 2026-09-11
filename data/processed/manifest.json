@@ -1,0 +1,83 @@
+{
+  "format": "country-risk-manifest",
+  "schema_version": 1,
+  "methodology_version": "2.1.0",
+  "dataset_mode": "live",
+  "built_at": "2026-09-11T11:18:54.367325+00:00",
+  "files": {
+    "config/agency_ratings.yaml": {
+      "sha256": "6ef2cd25b0af800633a0cb0f6e63ed96681ab0364806a7383b2d116e8ae73ec6",
+      "size_bytes": 2408
+    },
+    "config/countries.yaml": {
+      "sha256": "e2b85b1c6821e764ff26fe3a902c537b943c9795a0dfa5ca5dc44ee8cbe99d0b",
+      "size_bytes": 2933
+    },
+    "config/episodes.yaml": {
+      "sha256": "772ff9abf976b49129cd9494711c822c7b34346fb1321f0de0f666196abf186b",
+      "size_bytes": 6547
+    },
+    "config/indicators.yaml": {
+      "sha256": "39b59388fa256b5d7a59629077a7cff4297759506697c7369cd7d51260934ea1",
+      "size_bytes": 19133
+    },
+    "data/processed/data_metadata.json": {
+      "sha256": "d1806b247abbdfae3de89d5c6a086ff2f75bc8b1371e32e94733c75063fbbdae",
+      "size_bytes": 675
+    },
+    "data/processed/panel_wide.csv": {
+      "sha256": "cbdb6e147c427495affe6a2ca9b80ce729f7d52d70ebf2bf3ec05a3175185a5b",
+      "size_bytes": 149320
+    }
+  },
+  "env": {
+    "python": "3.11.16",
+    "python_version_tuple": "3.11.16",
+    "streamlit": "1.63.0",
+    "pandas": "2.3.3",
+    "numpy": "2.4.6",
+    "plotly": "6.9.0",
+    "PyYAML": "6.0.3",
+    "requests": "2.34.2"
+  },
+  "model": {
+    "methodology_version": "2.1.0",
+    "sector_composite_weight": 0.3,
+    "countries_in_panel": 23,
+    "coverage": {
+      "status": "issues",
+      "checks": {
+        "pillar_weights": true,
+        "sector_config": true,
+        "sector_partition": true,
+        "indicator_columns": false,
+        "pillar_coverage": true,
+        "derivations": true,
+        "episode_windows_in_range": true
+      },
+      "indicator_covered": 10,
+      "indicator_total": 13,
+      "error_count": 3,
+      "warning_count": 0
+    },
+    "backtest": {
+      "episodes_checked": 17,
+      "flagged": 11,
+      "missed": 6,
+      "inconclusive": 0,
+      "detection_rate": 0.647,
+      "median_peak_delta": 7.5,
+      "median_lead_time": 2.0,
+      "precision": 0.062,
+      "recall": 0.647,
+      "false_positive_rate": 0.219,
+      "false_negative_rate": 0.353,
+      "warning_frequency": 0.229
+    }
+  },
+  "signoff": {
+    "signed_by": "pipeline-bot",
+    "signed_at": "2026-09-11T11:18:55.347322+00:00",
+    "notes": ""
+  }
+}

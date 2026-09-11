@@ -1,0 +1,23 @@
+{
+  "run_id": "live-20260911T110851Z",
+  "mode": "LIVE",
+  "started_at": "2026-09-11T11:08:51.273896+00:00",
+  "completed_at": "2026-09-11T11:18:53.460193+00:00",
+  "retrieved_at": "2026-09-11T11:18:53.460198+00:00",
+  "requested_period": "1990\u20132025",
+  "latest_available_observation": 2025,
+  "country_count": 23,
+  "indicator_count": 16,
+  "observations_received": 9973,
+  "observations_missing": 8243,
+  "sources": [
+    "World Bank",
+    "FRED (US-only enrichment)"
+  ],
+  "source_urls": [
+    "https://api.worldbank.org/v2/",
+    "https://fred.stlouisfed.org/graph/fredgraph.csv"
+  ],
+  "methodology_version": "2.1.0",
+  "config_version": "config/indicators.yaml"
+}
