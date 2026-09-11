@@ -49,6 +49,7 @@ from dashboard.sections import contagion as contagion_section  # noqa: E402
 from dashboard.sections import country as country_section  # noqa: E402
 from dashboard.sections import map as map_section  # noqa: E402
 from dashboard.sections import methodology as methodology_section  # noqa: E402
+from dashboard.sections import pdf_export as pdf_export_section  # noqa: E402
 from dashboard.sections import scenario as scenario_section  # noqa: E402
 from dashboard.sections import track_record as track_record_section  # noqa: E402
 from dashboard.ui import (  # noqa: E402
@@ -594,6 +595,7 @@ _RENDER_SECTIONS = [
     scenario_section.render_scenario_laboratory,
     country_section.render_resilience,
     country_section.render_analyst_intelligence,
+    pdf_export_section.render_pdf_export,
     methodology_section.render_model_card,
     country_section.render_data_coverage,
     methodology_section.render_export_inspection,
