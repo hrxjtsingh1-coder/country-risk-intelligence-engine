@@ -228,29 +228,57 @@ def render_kpi(ctx: Context) -> None:
         )
 
     with k4:
-        panel_position = "—"
         score_column = find_score_column(scores) if isinstance(scores, pd.DataFrame) else None
 
-        if score_column and isinstance(scores, pd.DataFrame) and "year" in scores.columns:
+        if ctx.peer_n > 0 and ctx.peer_rank is not None:
+            peer_value = f"{ctx.peer_rank} / {ctx.peer_n}"
+            percentile_extra = (
+                f" &middot; riskier than ~{ctx.peer_percentile}% of peers" if ctx.peer_percentile is not None else ""
+            )
+            st.markdown(
+                f"""
+                <div class="card kpi">
+                    <div class="kpi-accent"></div>
+                    <div class="card-label">Peer position</div>
+                    <div class="card-value">{esc(peer_value)}</div>
+                    <div class="card-caption">{esc(ctx.peer_group_name)} peers (1st = riskiest){percentile_extra}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        elif score_column and isinstance(scores, pd.DataFrame) and "year" in scores.columns:
             try:
                 same_year = scores[pd.to_numeric(scores["year"], errors="coerce").eq(int(year))][score_column].dropna()
+                panel_position = "—"
                 if not same_year.empty:
                     rank = int((same_year > score_value).sum()) + 1
                     panel_position = f"#{rank} / {len(same_year)}"
             except Exception:
-                pass
+                panel_position = "—"
 
-        st.markdown(
-            f"""
-            <div class="card kpi">
-                <div class="kpi-accent"></div>
-                <div class="card-label">Panel position</div>
-                <div class="card-value">{panel_position}</div>
-                <div class="card-caption">relative risk rank in selected year</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+            st.markdown(
+                f"""
+                <div class="card kpi">
+                    <div class="kpi-accent"></div>
+                    <div class="card-label">Panel position</div>
+                    <div class="card-value">{esc(panel_position)}</div>
+                    <div class="card-caption">relative risk rank in selected year</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                """
+                <div class="card kpi">
+                    <div class="kpi-accent"></div>
+                    <div class="card-label">Peer position</div>
+                    <div class="card-value">—</div>
+                    <div class="card-caption">no comparable peer-year yet</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
     render_provenance_line(ctx)
 
@@ -295,6 +323,12 @@ def render_interpretation(ctx: Context) -> None:
             f"**{esc(_country_label)}** is currently positioned in the **{esc(ctx.band.lower())}** "
             f"relative-risk band within the selected comparison panel."
         )
+        if ctx.peer_n > 0 and ctx.peer_rank is not None:
+            _sentence += (
+                f" Among {ctx.peer_n} {esc(ctx.peer_group_name)} peers it ranks "
+                f"**#{ctx.peer_rank}** for relative risk (1 = riskiest)"
+                + (f", riskier than ~{ctx.peer_percentile}% of them." if ctx.peer_percentile is not None else ".")
+            )
         st.markdown(
             f'<div class="card"><div class="card-value" style="font-size:16px;font-weight:500;line-height:1.5;">{_sentence}</div>',
             unsafe_allow_html=True,

@@ -33,7 +33,7 @@ from src.commentary.generate_commentary import generate_report
 from src.runtime import data_state
 from src.runtime.live_data import LiveDataUnavailable, fetch_live_panel
 from src.scenario.scenario_engine import available_shock_presets, run_shock_scenario, shock_preset
-from src.scoring.risk_score import score_panel, top_drivers
+from src.scoring.risk_score import peer_percentile, score_panel, top_drivers
 
 # Run from any working directory: make both the package root `src` and the
 # dashboard package resolvable.
@@ -527,6 +527,12 @@ else:
 manifest_hash = _manifest_short_hash()
 
 
+# Peer-relative standing for the selected slice. `peer_groups` is loaded from
+# config/countries.yaml; a country in no group is compared against the whole
+# panel cross-section (consistent with the scoring's own fallback).
+peer_info = peer_percentile(scores, country, year, peer_groups=peer_groups) or {}
+
+
 # ============================================================================
 # SHARED CONTEXT + PAGE COMPOSITION
 #
@@ -561,6 +567,11 @@ ctx = Context(
     using_demo_data=USING_DEMO_DATA,
     live_provenance=live_provenance,
     generated_at=generated_at,
+    peer_percentile=peer_info.get("percentile"),
+    peer_riskier_share=peer_info.get("riskier_share"),
+    peer_rank=peer_info.get("rank"),
+    peer_n=int(peer_info.get("n") or 0),
+    peer_group_name=peer_info.get("group_name") or "",
     data_verified=data_verified,
     provenance_sources=provenance_sources,
     provenance_asof=provenance_asof,

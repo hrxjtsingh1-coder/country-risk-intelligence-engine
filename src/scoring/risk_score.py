@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -594,3 +595,87 @@ def top_drivers(
     )
 
     return subset.head(int(n)).reset_index(drop=True)
+
+
+def peer_percentile(
+    scores: pd.DataFrame,
+    country_iso3: str,
+    year: int,
+    peer_groups: dict[str, list[str]] | None = None,
+) -> dict[str, Any]:
+    """Relative-risk standing of a country-year among its peers that year.
+
+    Returns a dict with:
+      percentile   : 0-100 share of COMPARED peers with score <= this country
+                     (how large a fraction of the peer set this country is
+                     as-risky-as or riskier than).
+      riskier_share: 0-100 share of compared peers with a HIGHER score ("the
+                     Xth-percentile-riskiest" number; higher = more risky).
+      rank         : 1 = riskiest in the group, n = least risky (position when
+                     sorted descending).
+      n            : number of peers with a score that year (excludes this country).
+      group_name   : peer-group label, or "panel" when the country is in none.
+
+    Peers come from config/countries.yaml `peer_groups`; a country without a
+    group is compared against the whole year cross-section (consistent with the
+    scoring's own fallback). Returns an all-None dict when there is nothing to
+    compare against.
+    """
+    empty: dict[str, Any] = {
+        "percentile": None,
+        "riskier_share": None,
+        "rank": None,
+        "n": 0,
+        "group_name": None,
+    }
+    if not isinstance(scores, pd.DataFrame) or scores.empty or "risk_score" not in scores.columns:
+        return empty
+
+    iso = str(country_iso3).upper()
+    groups: dict[str, list[str]] = peer_groups or _load_peer_groups_as_lists()
+    members: list[str] | None = next(
+        (list(m) for group, m in groups.items() if iso in [str(c).upper() for c in m]), None
+    )
+    if members is None:
+        members = sorted({str(c).upper() for c in scores["country_iso3"].dropna()})
+
+    sub = scores[
+        pd.to_numeric(scores["year"], errors="coerce").eq(int(year))
+        & scores["country_iso3"].astype(str).str.upper().isin([str(c).upper() for c in members])
+    ].copy()
+    sub["risk_score"] = pd.to_numeric(sub["risk_score"], errors="coerce")
+    sub = sub.dropna(subset=["risk_score"])
+
+    own = sub[sub["country_iso3"].astype(str).str.upper().eq(iso)]
+    peers = sub[~sub["country_iso3"].astype(str).str.upper().eq(iso)]
+    if own.empty or peers.empty:
+        return dict(empty, group_name=_group_name_for(iso, groups))
+
+    own_score = float(own["risk_score"].iloc[0])
+    n = int(len(peers))
+    less_or_equal = int((peers["risk_score"] <= own_score).sum())
+    greater = int((peers["risk_score"] > own_score).sum())
+    rank = greater + 1
+
+    return {
+        "percentile": int(round(less_or_equal / n * 100)),
+        "riskier_share": int(round(greater / n * 100)),
+        "rank": rank,
+        "n": n,
+        "group_name": _group_name_for(iso, groups),
+    }
+
+
+def _group_name_for(iso3: str, groups: dict[str, list[str]]) -> str | None:
+    for group, members in groups.items():
+        if iso3 in [str(c).upper() for c in members]:
+            return str(group)
+    return "panel"
+
+
+def _load_peer_groups_as_lists() -> dict[str, list[str]]:
+    mapping = _load_peer_groups()  # iso3 -> group name
+    groups: dict[str, list[str]] = {}
+    for iso3, group in mapping.items():
+        groups.setdefault(group, []).append(iso3)
+    return groups
