@@ -103,7 +103,7 @@ def render_about(ctx: Context) -> None:
         <div class="card" style="margin-top:16px;">
             <div class="micro" style="margin-bottom:8px;">
                 CURRENT RUN · {esc(ctx.iso)} / {int(ctx.year)}
-                · {"DEMO PANEL" if ctx.using_demo_data else ("CACHED PANEL" if getattr(ctx, 'using_cached_data', False) else "LIVE PANEL")}
+                · {"DEMO PANEL" if ctx.using_demo_data else ("CACHED PANEL" if getattr(ctx, "using_cached_data", False) else "LIVE PANEL")}
             </div>
             <div style="color:#bdc8d6;font-size:12px;line-height:1.75;">
                 Showing {esc(ctx.country_label)} · composite {ctx.score_value:.1f}/100

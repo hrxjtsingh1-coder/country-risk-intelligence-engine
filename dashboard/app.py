@@ -195,9 +195,7 @@ def _is_offline() -> bool:
     return os.environ.get("COUNTRY_RISK_OFFLINE", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _fetch_live_bounded(
-    iso3_codes: tuple, start_year: int, end_year: int, config_version: str
-):
+def _fetch_live_bounded(iso3_codes: tuple, start_year: int, end_year: int, config_version: str):
     """Run a live fetch with a strict wall-clock budget.
 
     The requests layer already gives each call its own timeout + retry, but a
@@ -235,9 +233,7 @@ if "data_mode" not in st.session_state:
 if st.session_state.data_mode is None:
     try:
         with st.spinner("Connecting to World Bank..."):
-            _live_result = _cached_fetch_live(
-                COUNTRY_ISO3_LIST, LIVE_START_YEAR, LIVE_END_YEAR, _config_version()
-            )
+            _live_result = _cached_fetch_live(COUNTRY_ISO3_LIST, LIVE_START_YEAR, LIVE_END_YEAR, _config_version())
         st.session_state.live_result = _live_result
         st.session_state.live_error = None
         st.session_state.data_mode = data_state.LIVE
