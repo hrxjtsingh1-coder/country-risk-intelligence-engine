@@ -14,6 +14,8 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
+from src.indicators.build_panel import _derive_indicators, LONG_COLUMNS
+
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_PATH = ROOT / "data" / "processed" / "panel_wide.csv"
 
@@ -71,6 +73,7 @@ def create_panel(countries: list[dict], start: int, end: int) -> pd.DataFrame:
                     "DT.DOD.DECT.GN.ZS": round(38.0 + profile * 7.0 + elapsed * 0.25, 3),
                     "FB.AST.NPER.ZS": round(2.8 + profile * 0.35 + cycle * 0.1, 3),
                     "FX_YOY_DEPRECIATION_PCT": round(2.0 + profile * 1.1 + cycle * 0.25 - 0.05 * commodity_signal, 3),
+                    "FX_LEVEL_USD_LCU": round(2.5 + profile * 0.6 + elapsed * 0.06 + cycle * 0.05, 3),
                     "POLICY_RATE_YOY_CHANGE_BPS": round(35.0 + profile * 7.0 + cycle * 4.0, 3),
                     "GC.NLD.TOTL.GD.ZS": round(-2.0 + profile * 0.5 - cycle * 0.1, 3),
                     "NE.RSB.GNFS.ZS": round(1.0 - profile * 0.4 + cycle * 0.2, 3),
@@ -89,6 +92,18 @@ def create_panel(countries: list[dict], start: int, end: int) -> pd.DataFrame:
     panel["RESERVES_TO_SHORT_TERM_DEBT_RATIO"] = (
         panel["FI.RES.XGLD.CD"] / panel["DT.DOD.DSTC.CD"]
     ).round(3)
+
+    # FX_TREND_DEVIATION_PCT is derived through the exact same code path the
+    # live pipeline uses, so the coverage re-derivation check stays exact.
+    fx_level = panel[["country_iso3", "year", "FX_LEVEL_USD_LCU"]].rename(columns={"FX_LEVEL_USD_LCU": "value"})
+    fx_level["indicator_code"] = "FX_LEVEL_USD_LCU"
+    fx_level["source"] = "demo"
+    fx_level["flag"] = "ok"
+    derived = _derive_indicators(fx_level[LONG_COLUMNS])
+    trend_dev = derived[derived["indicator_code"] == "FX_TREND_DEVIATION_PCT"][["country_iso3", "year", "value"]].rename(
+        columns={"value": "FX_TREND_DEVIATION_PCT"}
+    )
+    panel = panel.merge(trend_dev, on=["country_iso3", "year"], how="left")
     return panel
 
 

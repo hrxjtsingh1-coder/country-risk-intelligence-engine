@@ -201,12 +201,18 @@ def _build_fx_depreciation(
     raw = raw.dropna(subset=["value"]).sort_values("year")
     raw["fx_yoy"] = raw["value"].pct_change() * 100.0
 
-    out = raw[raw["year"].between(start, end)].copy()
-    out["value"] = out["fx_yoy"]
-    out["source"] = "World Bank; derived from PA.NUS.FCRF"
-    out["indicator_code"] = "FX_YOY_DEPRECIATION_PCT"
+    yoy = raw[raw["year"].between(start, end)].copy()
+    yoy["value"] = yoy["fx_yoy"]
+    yoy["source"] = "World Bank; derived from PA.NUS.FCRF"
+    yoy["indicator_code"] = "FX_YOY_DEPRECIATION_PCT"
+    yoy = yoy[["country_iso3", "indicator_code", "year", "value", "source"]]
 
-    return out[["country_iso3", "indicator_code", "year", "value", "source"]]
+    level = raw[raw["year"].between(start, end)].copy()
+    level["source"] = "World Bank PA.NUS.FCRF (official rate, national currency per USD, period average)"
+    level["indicator_code"] = "FX_LEVEL_USD_LCU"
+    level = level[["country_iso3", "indicator_code", "year", "value", "source"]]
+
+    return pd.concat([yoy, level], ignore_index=True)
 
 
 def _policy_rate_for_country(
@@ -699,12 +705,16 @@ def _series_slice(panel: pd.DataFrame, code: str) -> pd.DataFrame:
 def _derive_indicators(panel: pd.DataFrame) -> pd.DataFrame:
     """Append derived indicators that reference other panel series.
 
-    OUTPUT_GAP_PROXY_PCT            : real GDP growth minus trailing 3-year own-growth
-                                     mean (a documented proxy for cyclical slack).
+        OUTPUT_GAP_PROXY_PCT            : real GDP growth minus trailing 3-year own-growth
+                                         mean (a documented proxy for cyclical slack).
     PUBLIC_DEBT_TRAJECTORY_PCT      : 3-year change in the public-debt-to-GDP ratio.
-    RESERVES_TO_SHORT_TERM_DEBT_RATIO : Greenspan-Guidotti ratio, total reserves minus
-                                     gold divided by short-term external debt (both
-                                     current US$), only where short-term debt is positive.
+        RESERVES_TO_SHORT_TERM_DEBT_RATIO : Greenspan-Guidotti ratio, total reserves minus
+                                          gold divided by short-term external debt (both
+                                          current US$), only where short-term debt is positive.
+        FX_TREND_DEVIATION_PCT           : current nominal FX level (PA.NUS.FCRF, LCU per USD)
+                                           vs its own long-run trend (centered 5-year rolling
+                                           mean); positive = currency weaker than trend. A
+                                           nominal, REER-style deviation proxy.
     """
     frames = []
 
@@ -744,6 +754,18 @@ def _derive_indicators(panel: pd.DataFrame) -> pd.DataFrame:
             ratio["source"] = "Derived from World Bank FI.RES.XGLD.CD / DT.DOD.DSTC.CD"
             ratio["flag"] = "ok"
             frames.append(ratio[LONG_COLUMNS])
+
+    if "FX_LEVEL_USD_LCU" in set(panel["indicator_code"]):
+        level = _series_slice(panel, "FX_LEVEL_USD_LCU")
+        level["_trend"] = level.groupby("country_iso3")["value"].transform(
+            lambda s: s.rolling(5, center=True, min_periods=3).mean()
+        )
+        dev = level[(level["_trend"].notna()) & (level["_trend"] > 0)].copy()
+        dev["value"] = ((dev["value"] - dev["_trend"]) / dev["_trend"] * 100.0).round(3)
+        dev["indicator_code"] = "FX_TREND_DEVIATION_PCT"
+        dev["source"] = "Derived from World Bank PA.NUS.FCRF vs own 5-year trend"
+        dev["flag"] = "ok"
+        frames.append(dev[LONG_COLUMNS])
 
     if not frames:
         return pd.DataFrame(columns=LONG_COLUMNS)

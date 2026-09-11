@@ -284,6 +284,38 @@ indicators:
     min: -1000
     max: 1000
 
+  - code: FX_LEVEL_USD_LCU
+    label: Nominal FX level to USD
+    category: FX
+    pillar: Monetary & Currency Stability
+    weight: 0.00
+    risk_direction: 1
+    source: World Bank
+    source_url: "https://data.worldbank.org/indicator/PA.NUS.FCRF"
+    source_series: PA.NUS.FCRF
+    frequency: annual
+    transformation: "Official exchange rate, national currency per USD, period average. Persisted as the raw level so trend deviation can be derived."
+    unit: "LCU per USD"
+    note: "Raw FX level backing FX_YOY_DEPRECIATION_PCT and FX_TREND_DEVIATION_PCT. Zero-weight: not in the composite score."
+    min: 0
+    max: 100000
+
+  - code: FX_TREND_DEVIATION_PCT
+    label: FX deviation from long-run trend
+    category: FX
+    pillar: Monetary & Currency Stability
+    weight: 0.00
+    risk_direction: 1
+    source: derived
+    source_url: "https://data.worldbank.org/indicator/PA.NUS.FCRF"
+    source_series: PA.NUS.FCRF
+    frequency: annual
+    transformation: "Current nominal FX level vs its own centered 5-year trend: (level / trend - 1) * 100. Positive = currency weaker than trend. Nominal REER-style deviation proxy."
+    unit: "% vs 5-yr trend"
+    note: "Derived from FX_LEVEL_USD_LCU (see src/indicators/build_panel.py). Zero-weight: not in the composite score. Labeled as a nominal proxy, not a true trade-weighted REER."
+    min: -100
+    max: 500
+
   - code: IMF_REAL_EFFECTIVE_EXCHANGE_RATE
     label: Real effective exchange rate
     category: FX

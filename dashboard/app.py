@@ -48,6 +48,7 @@ from dashboard.sections import benchmark as benchmark_section  # noqa: E402
 from dashboard.sections import comparison as comparison_section  # noqa: E402
 from dashboard.sections import contagion as contagion_section  # noqa: E402
 from dashboard.sections import country as country_section  # noqa: E402
+from dashboard.sections import fx_deviation as fx_deviation_section  # noqa: E402
 from dashboard.sections import map as map_section  # noqa: E402
 from dashboard.sections import methodology as methodology_section  # noqa: E402
 from dashboard.sections import pdf_export as pdf_export_section  # noqa: E402
@@ -595,6 +596,7 @@ _RENDER_SECTIONS = [
     track_record_section.render_track_record,
     scenario_section.render_scenario_laboratory,
     country_section.render_resilience,
+    fx_deviation_section.render_fx_deviation,
     country_section.render_analyst_intelligence,
     benchmark_section.render_agency_benchmark,
     pdf_export_section.render_pdf_export,
