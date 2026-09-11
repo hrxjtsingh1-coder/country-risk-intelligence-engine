@@ -642,6 +642,152 @@ def render_analyst_intelligence(ctx: Context) -> None:
     )
 
 
+def render_resilience(ctx: Context) -> None:
+    """External & fiscal resilience: the Greenspan-Guidotti rule and the twin-deficits view."""
+
+    st.markdown(
+        """
+        <div class="section-head">
+            <div>
+                <div class="section-title">External &amp; fiscal resilience</div>
+                <div class="section-sub">
+                    Two classic vulnerability lenses from indicators already collected: the
+                    reserves-to-short-term-debt (Greenspan–Guidotti) rule and the twin-deficits
+                    combination. Reference signals — neither feeds the composite score.
+                </div>
+            </div>
+            <div class="micro">EARLY-WARNING / TRANSPARENCY</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    left, right = st.columns([1, 1], gap="large")
+
+    with left:
+        st.markdown(
+            '<div class="card-label">GREENSPAN–GUIDOTTI RULE</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="card-caption" style="margin-bottom:10px;">'
+            "FX reserves ÷ short-term external debt — below <strong>1.0</strong> means reserves "
+            "do not fully cover maturing short-term external claims, the classic rollover-vulnerability "
+            "threshold used by EM risk desks.</div>",
+            unsafe_allow_html=True,
+        )
+        if "RESERVES_TO_SHORT_TERM_DEBT_RATIO" in ctx.panel.columns:
+            series = (
+                ctx.panel[ctx.panel["country_iso3"].astype(str).eq(str(ctx.country))]
+                .assign(year=lambda d: pd.to_numeric(d["year"], errors="coerce"))
+                .sort_values("year")
+            )
+            series = series.dropna(subset=["year", "RESERVES_TO_SHORT_TERM_DEBT_RATIO"])
+            if not series.empty:
+                fig = go.Figure()
+                fig.add_trace(
+                    go.Scatter(
+                        x=series["year"],
+                        y=series["RESERVES_TO_SHORT_TERM_DEBT_RATIO"],
+                        mode="lines+markers",
+                        line=dict(color=COLORS["cyan"], width=3, shape="spline"),
+                        marker=dict(size=7, color=COLORS["cyan"]),
+                        fill="tozeroy",
+                        fillcolor="rgba(94,231,242,.05)",
+                        hovertemplate="<b>%{x}</b><br>Ratio: %{y:.2f}x<extra></extra>",
+                        name="Reserves / short-term debt",
+                    )
+                )
+                fig.add_hrect(
+                    y0=0,
+                    y1=1.0,
+                    fillcolor="rgba(255,107,122,.06)",
+                    line_width=0,
+                )
+                fig.add_hline(
+                    y=1.0,
+                    line_dash="dash",
+                    line_color="rgba(255,107,122,.8)",
+                    annotation_text="1.0 — Guidotti threshold",
+                    annotation_font_color="#ff6b7a",
+                    annotation_font_size=10,
+                )
+                fig.update_yaxes(title="Ratio (x)")
+                fig.update_xaxes(title="Year")
+                plotly_chart(fig, height=320)
+            else:
+                empty_state("No Greenspan–Guidotti series available for this country.")
+        else:
+            empty_state("Reserves-to-short-term-debt ratio not present in this panel.")
+
+    with right:
+        st.markdown(
+            '<div class="card-label">TWIN DEFICITS</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="card-caption" style="margin-bottom:10px;">'
+            "Fiscal balance and current-account balance together (both % of GDP). Textbook wisdom: "
+            "a large <em>twin deficit</em> — budget <strong>and</strong> external deficit at once — "
+            "forces reliance on foreign financing and is a recognized risk combo. Negative = deficit, "
+            "positive = surplus.</div>",
+            unsafe_allow_html=True,
+        )
+        fiscal_col = "GC.NLD.TOTL.GD.ZS"
+        ca_col = "BN.CAB.XOKA.GD.ZS"
+        if fiscal_col in ctx.panel.columns and ca_col in ctx.panel.columns:
+            series = (
+                ctx.panel[ctx.panel["country_iso3"].astype(str).eq(str(ctx.country))]
+                .assign(year=lambda d: pd.to_numeric(d["year"], errors="coerce"))
+                .sort_values("year")
+            )
+            fig = go.Figure()
+            if not series.dropna(subset=["year", fiscal_col]).empty:
+                fig.add_trace(
+                    go.Scatter(
+                        x=series["year"],
+                        y=series[fiscal_col],
+                        mode="lines+markers",
+                        line=dict(color=COLORS["orange"], width=3, shape="spline"),
+                        marker=dict(size=6, color=COLORS["orange"]),
+                        hovertemplate="<b>%{x}</b><br>Budget balance: %{y:.1f}% GDP<extra></extra>",
+                        name="Fiscal balance",
+                    )
+                )
+            if not series.dropna(subset=["year", ca_col]).empty:
+                fig.add_trace(
+                    go.Scatter(
+                        x=series["year"],
+                        y=series[ca_col],
+                        mode="lines+markers",
+                        line=dict(color=COLORS["cyan"], width=3, shape="spline"),
+                        marker=dict(size=6, color=COLORS["cyan"]),
+                        hovertemplate="<b>%{x}</b><br>Current account: %{y:.1f}% GDP<extra></extra>",
+                        name="Current account",
+                    )
+                )
+            fig.add_hline(
+                y=0,
+                line_dash="dot",
+                line_color="rgba(148,163,184,.35)",
+            )
+            fig.update_yaxes(title="% of GDP")
+            fig.update_xaxes(title="Year")
+            plotly_chart(fig, height=320)
+        else:
+            empty_state("Twin-deficit series not present in this panel.")
+
+    render_provenance_line(ctx)
+
+    st.markdown(
+        '<div class="card-caption" style="font-style:italic;">'
+        "Both views are transparency signals derived from already-collected data — they carry zero "
+        "weight in the composite score (see config/indicators.yaml), so they can be read as facts "
+        "without feeding the backtest or methodology.</div>",
+        unsafe_allow_html=True,
+    )
+
+
 def render_data_coverage(ctx: Context) -> None:
     st.markdown(
         """

@@ -590,6 +590,7 @@ _RENDER_SECTIONS = [
     comparison_section.render_deterioration_watch,
     track_record_section.render_track_record,
     scenario_section.render_scenario_laboratory,
+    country_section.render_resilience,
     country_section.render_analyst_intelligence,
     methodology_section.render_model_card,
     country_section.render_data_coverage,
