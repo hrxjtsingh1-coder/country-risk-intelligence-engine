@@ -55,6 +55,7 @@ from dashboard.sections import fx_deviation as fx_deviation_section  # noqa: E40
 from dashboard.sections import map as map_section  # noqa: E402
 from dashboard.sections import methodology as methodology_section  # noqa: E402
 from dashboard.sections import pdf_export as pdf_export_section  # noqa: E402
+from dashboard.sections import pulse as pulse_section  # noqa: E402
 from dashboard.sections import scenario as scenario_section  # noqa: E402
 from dashboard.sections import track_record as track_record_section  # noqa: E402
 from dashboard.ui import (  # noqa: E402
@@ -327,19 +328,17 @@ else:
 
 
 # ============================================================================
-# SIDEBAR — ORIGINAL CONTROLS + REFRESH / EXPORT
+# SIDEBAR — WORKSPACE CONTEXT + PRIMARY NAVIGATION
 # ============================================================================
 
 with st.sidebar:
     st.markdown(
         f"""
         <div style="padding:4px 4px 16px;">
-            <div class="kicker">RISK ENGINE / {("DEMO PANEL" if USING_DEMO_DATA else ("CACHED PANEL" if USING_CACHED_DATA else "LIVE PANEL"))}</div>
-            <div style="font-family:'Space Grotesk';font-size:21px;font-weight:700;">
-                Control Room
-            </div>
+            <div class="kicker">GLOBAL COUNTRY RISK</div>
+            <div style="font-family:'Space Grotesk';font-size:21px;font-weight:700;">Intelligence Engine</div>
             <div class="micro" style="margin-top:7px;">
-                Select the analytical slice.
+                Evidence first. Context always visible.
             </div>
         </div>
         """,
@@ -368,57 +367,45 @@ with st.sidebar:
         st.stop()
 
     year = st.selectbox(
-        "Year",
+        "Analysis year",
         years,
         index=len(years) - 1,
         key="year_selector",
+        help="Annual analysis year. This may lag the date the source was retrieved.",
     )
 
     st.markdown("---")
 
     st.markdown(
-        '<div class="kicker" style="margin-bottom:7px;">SCENARIO LAB</div>',
+        '<div class="kicker" style="margin-bottom:7px;">PRIMARY NAVIGATION</div>',
         unsafe_allow_html=True,
     )
 
-    preset_choices = ["+ None (custom shock)"] + [shock_preset(name)["name"] for name in available_shock_presets()]
-
-    preset_label = st.selectbox(
-        "Scenario preset",
-        preset_choices,
+    # Keep the historic internal values so existing bookmarked/tested routes
+    # remain valid, while format_func gives users the new product language.
+    nav_options = [
+        "Overview",
+        "Country Intelligence",
+        "Compare",
+        "Scenario Lab",
+        "Early Warning",
+        "Contagion & Correlations",
+        "Track Record & Model Validation",
+        "Data & Methodology",
+    ]
+    nav_labels = {
+        "Overview": "Global Pulse",
+        "Track Record & Model Validation": "Validation",
+        "Contagion & Correlations": "Global Linkages",
+    }
+    page = st.radio(
+        "Primary navigation",
+        nav_options,
         index=0,
-        key="scenario_preset",
+        format_func=lambda value: nav_labels.get(value, value),
+        key="page_nav",
+        help="Move from global orientation to country detail, scenarios, monitoring, and evidence.",
     )
-
-    selected_preset_key = None
-    if preset_label != preset_choices[0]:
-        for _name in available_shock_presets():
-            if shock_preset(_name)["name"] == preset_label:
-                selected_preset_key = _name
-                break
-
-    if selected_preset_key is None:
-        shock = st.number_input(
-            "Policy rate YoY change (bps)",
-            min_value=-1000,
-            max_value=1000,
-            value=0,
-            step=25,
-            key="policy_rate_shock",
-            help="Original scenario driver: POLICY_RATE_YOY_CHANGE_BPS",
-        )
-    else:
-        _preset_config = shock_preset(selected_preset_key)
-        st.markdown(
-            f"""
-            <div class="micro" style="margin-top:6px; line-height:1.6;">
-                {esc(str(_preset_config["driver_code"]))} · {esc(str(_preset_config["display_unit"]))}
-                <br>{esc(str(_preset_config["description"]))}
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        shock = float(_preset_config["default_shock_amount"])
 
     st.markdown("---")
 
@@ -454,33 +441,102 @@ with st.sidebar:
     st.markdown("---")
 
     st.markdown(
-        '<div class="kicker" style="margin-bottom:7px;">PAGES</div>',
-        unsafe_allow_html=True,
-    )
-
-    page = st.radio(
-        "Pages",
-        ["Overview", "Track Record & Model Validation", "Contagion & Correlations"],
-        index=0,
-        key="page_nav",
-        help="Overview renders the full cockpit; the Track Record page is the "
-        "honest replay of past crisis episodes against this engine's own scores; "
-        "the Contagion page maps which countries' risk scores move together.",
-    )
-
-    st.markdown("---")
-
-    st.markdown(
         """
         <div class="micro">
             ENGINE STATUS<br>
             <span style="color:#54d69a;">● ONLINE</span><br><br>
             Analytics remain deterministic and traceable.
-            Presentation is layered on top of the existing engine.
+            The interface is layered on top of the existing engine.
         </div>
         """,
         unsafe_allow_html=True,
     )
+
+
+# ============================================================================
+# USER-FACING CONTEXT / SCENARIO WORKSPACE
+#
+# Scenario controls live in the main workspace rather than the sidebar. This
+# keeps the sidebar focused on navigation and the selected analytical context.
+# ============================================================================
+
+page_title, page_subtitle = {
+    "Overview": ("GLOBAL PULSE", "A compact read of the panel: what is changing, where, and how much coverage exists."),
+    "Country Intelligence": ("COUNTRY INTELLIGENCE", "Move from the score to the drivers, evidence, resilience, and what to watch next."),
+    "Compare": ("COMPARE", "Understand why countries rank differently instead of comparing two tables in isolation."),
+    "Scenario Lab": ("SCENARIO LAB", "Stress-test supported drivers and see the transmission path from shock to composite risk."),
+    "Early Warning": ("EARLY WARNING", "Monitor deterioration signals and data-quality warnings without calling them predictions."),
+    "Global Linkages": ("GLOBAL LINKAGES", "Explore co-movement and regional structure. Correlation is not causation."),
+    "Validation": ("VALIDATION", "See what the engine flagged, missed, or could not judge in historical episodes."),
+    "Data & Methodology": ("DATA & METHODOLOGY", "Inspect how raw observations become scores, commentary, exports, and limitations."),
+}.get(page, ("GLOBAL PULSE", "A compact read of the panel."))
+
+status_label = "DEMO" if USING_DEMO_DATA else "CACHED" if USING_CACHED_DATA else "LIVE"
+status_color = "#ff9f5b" if USING_DEMO_DATA or USING_CACHED_DATA else "#54d69a"
+st.markdown(
+    f"""
+    <div class="context-bar">
+        <div>
+            <div class="kicker">{esc(page_title)}</div>
+            <div class="context-title">{esc(page_subtitle)}</div>
+        </div>
+        <div class="context-state">
+            <span class="context-dot" style="background:{status_color};"></span>
+            <strong>{esc(get_country_label(country))}</strong>
+            <span>{esc(str(country))}</span>
+            <span class="context-divider">/</span>
+            <strong>{int(year)}</strong>
+            <span class="context-divider">/</span>
+            <span>{status_label}</span>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+selected_preset_key = None
+shock = 0
+if page == "Scenario Lab":
+    preset_choices = ["+ None (custom shock)"] + [shock_preset(name)["name"] for name in available_shock_presets()]
+    st.markdown(
+        """
+        <div class="workspace-callout">
+            <div class="card-label">SCENARIO WORKSPACE</div>
+            <div class="card-caption">Choose a supported preset or define a transparent policy-rate shock. The output below is an estimate, not a forecast.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    scenario_cols = st.columns([1.35, 1, 1])
+    with scenario_cols[0]:
+        preset_label = st.selectbox("Scenario preset", preset_choices, index=0, key="scenario_lab_preset")
+    if preset_label != preset_choices[0]:
+        for _name in available_shock_presets():
+            if shock_preset(_name)["name"] == preset_label:
+                selected_preset_key = _name
+                break
+    with scenario_cols[1]:
+        if selected_preset_key is None:
+            shock = st.slider(
+                "Policy rate shock (bps)",
+                min_value=-1000,
+                max_value=1000,
+                value=0,
+                step=25,
+                key="scenario_lab_shock",
+            )
+        else:
+            _preset_config = shock_preset(selected_preset_key)
+            shock = float(_preset_config["default_shock_amount"])
+            st.metric("Preset shock", f"{shock:g} {_preset_config['display_unit']}")
+    with scenario_cols[2]:
+        if selected_preset_key is None:
+            st.caption("Driver")
+            st.code("POLICY_RATE_YOY_CHANGE_BPS", language=None)
+        else:
+            _preset_config = shock_preset(selected_preset_key)
+            st.caption("Supported driver")
+            st.code(str(_preset_config["driver_code"]), language=None)
 
 
 # ============================================================================
@@ -642,10 +698,8 @@ peer_info = peer_percentile(scores, country, year, peer_groups=peer_groups) or {
 # ============================================================================
 # SHARED CONTEXT + PAGE COMPOSITION
 #
-# Mechanical component split: each section module renders one slice of the
-# original single-page layout, in the same order, from the same context.
-# No navigation/routing yet — a later pass introduces the page structure
-# (map, country deep-dive, comparison, scenario simulator, methodology).
+# Each product destination composes existing section modules from the same
+# Context. Navigation changes the reading path, never the scoring method.
 # ============================================================================
 
 ctx = Context(
@@ -685,31 +739,6 @@ ctx = Context(
     manifest_hash=manifest_hash,
 )
 
-_RENDER_SECTIONS = [
-    country_section.render_hero,
-    map_section.render_map,
-    country_section.render_provenance,
-    country_section.render_kpi,
-    country_section.render_interpretation,
-    country_section.render_trajectory,
-    country_section.render_drivers,
-    comparison_section.render_peer_comparison,
-    comparison_section.render_deterioration_watch,
-    track_record_section.render_track_record,
-    scenario_section.render_scenario_laboratory,
-    country_section.render_resilience,
-    fx_deviation_section.render_fx_deviation,
-    country_section.render_analyst_intelligence,
-    benchmark_section.render_agency_benchmark,
-    pdf_export_section.render_pdf_export,
-    methodology_section.render_model_card,
-    country_section.render_data_coverage,
-    methodology_section.render_export_inspection,
-    methodology_section.render_engine_integrity,
-    about_section.render_about,
-]
-
-
 def _render_nav_footer(ctx: Context) -> None:
     """Footer shared by the dedicated nav pages (Track Record, Contagion, ...)."""
     st.markdown(
@@ -727,18 +756,62 @@ def _render_nav_footer(ctx: Context) -> None:
     )
 
 
-if page == "Track Record & Model Validation":
-    track_record_section.render_track_record(ctx)
+if page == "Overview":
+    pulse_section.render_global_pulse(ctx)
+    map_section.render_map(ctx)
     _render_nav_footer(ctx)
     st.stop()
 
-if page == "Contagion & Correlations":
+if page == "Country Intelligence":
+    country_section.render_hero(ctx)
+    country_section.render_provenance(ctx)
+    country_section.render_kpi(ctx)
+    country_section.render_interpretation(ctx)
+    country_section.render_trajectory(ctx)
+    country_section.render_drivers(ctx)
+    country_section.render_resilience(ctx)
+    fx_deviation_section.render_fx_deviation(ctx)
+    country_section.render_analyst_intelligence(ctx)
+    country_section.render_data_coverage(ctx)
+    _render_nav_footer(ctx)
+    st.stop()
+
+if page == "Compare":
+    comparison_section.render_peer_comparison(ctx)
+    _render_nav_footer(ctx)
+    st.stop()
+
+if page == "Scenario Lab":
+    scenario_section.render_scenario_laboratory(ctx)
+    _render_nav_footer(ctx)
+    st.stop()
+
+if page == "Early Warning":
+    comparison_section.render_deterioration_watch(ctx)
+    _render_nav_footer(ctx)
+    st.stop()
+
+if page in {"Global Linkages", "Contagion & Correlations"}:
     contagion_section.render_contagion(ctx)
     _render_nav_footer(ctx)
     st.stop()
 
-for _render in _RENDER_SECTIONS:
-    _render(ctx)
+if page in {"Validation", "Track Record & Model Validation"}:
+    track_record_section.render_track_record(ctx)
+    methodology_section.render_model_validation(ctx)
+    _render_nav_footer(ctx)
+    st.stop()
+
+if page == "Data & Methodology":
+    methodology_section.render_model_card(ctx)
+    country_section.render_provenance(ctx)
+    methodology_section.render_export_inspection(ctx)
+    methodology_section.render_engine_integrity(ctx)
+    benchmark_section.render_agency_benchmark(ctx)
+    pdf_export_section.render_pdf_export(ctx)
+    about_section.render_about(ctx)
+    _render_nav_footer(ctx)
+    st.stop()
 
 
 # ============================================================================
