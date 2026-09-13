@@ -5,6 +5,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 import requests
+
+
 USER_AGENT = "country-risk-intelligence-engine/1.0"
 DEFAULT_TIMEOUT = 90
 
