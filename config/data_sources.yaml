@@ -1,0 +1,53 @@
+# Official providers used by the ingestion layer.
+# Series identifiers are explicit; no unofficial fallback is silently substituted.
+providers:
+  world_bank:
+    name: World Bank Indicators API
+    api_key_required: false
+    base_url: https://api.worldbank.org/v2
+    adapter: src.ingestion.world_bank
+  imf:
+    name: IMF DataMapper API v2
+    api_key_required: false
+    base_url: https://www.imf.org/external/datamapper/api/v2
+    adapter: src.ingestion.imf
+  bis:
+    name: BIS Statistics SDMX API
+    api_key_required: false
+    base_url: https://stats.bis.org/api/v2
+    adapter: src.ingestion.bis
+  eurostat:
+    name: Eurostat Statistics API
+    api_key_required: false
+    base_url: https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data
+    adapter: src.ingestion.eurostat
+  oecd:
+    name: OECD SDMX REST API
+    api_key_required: false
+    base_url: https://sdmx.oecd.org/public/rest
+    adapter: src.ingestion.oecd
+
+smoke_test_series:
+  - provider: world_bank
+    country: IND
+    series: NY.GDP.MKTP.CD
+    frequency: annual
+  - provider: imf
+    country: IND
+    series: NGDP_RPCH
+    frequency: annual
+  - provider: bis
+    country: IN
+    dataflow: WS_CREDIT_GAP
+    version: "1.0"
+    key: Q.IN.P.A.C
+    frequency: quarterly
+  - provider: eurostat
+    country: DE
+    dataset: prc_hicp_midx
+    frequency: monthly
+  - provider: oecd
+    agency: OECD.SDD.NAD
+    dataflow: DSD_NASU@DF_INDICATOR
+    version: latest
+    frequency: varies

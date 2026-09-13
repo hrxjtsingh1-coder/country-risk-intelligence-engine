@@ -17,7 +17,6 @@ from dashboard.ui import (
     band_color,
     esc,
     fmt_delta,
-    fmt_number,
     get_country_label,
     normalize_band,
     safe_float,
@@ -37,11 +36,19 @@ def _slice(scores: pd.DataFrame, year: int) -> pd.DataFrame:
     if "risk_score" not in result.columns:
         result["risk_score"] = np.nan
     result["risk_score"] = pd.to_numeric(result["risk_score"], errors="coerce")
-    result["risk_band"] = result.get("risk_band", result["risk_score"].map(lambda x: "Elevated" if pd.isna(x) else ""))
+    result["risk_band"] = result.get(
+        "risk_band", result["risk_score"].map(lambda x: "Elevated" if pd.isna(x) else "")
+    )
     result["risk_band"] = result.apply(
         lambda row: normalize_band(row["risk_band"])
         if str(row.get("risk_band", "")).strip()
-        else ("Severe" if row["risk_score"] >= 80 else "High" if row["risk_score"] >= 60 else "Elevated"),
+        else (
+            "Severe"
+            if row["risk_score"] >= 80
+            else "High"
+            if row["risk_score"] >= 60
+            else "Elevated"
+        ),
         axis=1,
     )
     result = result.dropna(subset=["risk_score"]).drop_duplicates("country_iso3")
@@ -57,7 +64,9 @@ def _with_change(ctx: Context) -> pd.DataFrame:
     if previous.empty:
         current["change"] = np.nan
     else:
-        previous = previous[["country_iso3", "risk_score"]].rename(columns={"risk_score": "previous_score"})
+        previous = previous[["country_iso3", "risk_score"]].rename(
+            columns={"risk_score": "previous_score"}
+        )
         current = current.merge(previous, on="country_iso3", how="left")
         current["change"] = current["risk_score"] - current["previous_score"]
     return current
@@ -78,7 +87,9 @@ def _metric_card(label: str, value: str, caption: str, accent: str) -> None:
 
 
 def _ranking(title: str, rows: pd.DataFrame, ctx: Context, direction: str) -> None:
-    st.markdown(f'<div class="pulse-ranking-title">{esc(title)}</div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="pulse-ranking-title">{esc(title)}</div>', unsafe_allow_html=True
+    )
     if rows.empty:
         st.caption("Not enough year-on-year observations.")
         return
@@ -96,7 +107,9 @@ def _ranking(title: str, rows: pd.DataFrame, ctx: Context, direction: str) -> No
                 st.session_state["page_nav"] = "Country Intelligence"
                 st.rerun()
         with row_cols[1]:
-            st.markdown(f'<div class="pulse-score">{score:.1f}</div>', unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="pulse-score">{score:.1f}</div>', unsafe_allow_html=True
+            )
         with row_cols[2]:
             change_text = "—" if np.isnan(change) else fmt_delta(change)
             st.markdown(
@@ -109,10 +122,25 @@ def render_global_pulse(ctx: Context) -> None:
     """Render the concise, orientation-first landing page."""
     data = _with_change(ctx)
     covered = len(data)
-    elevated_plus = int(data["risk_band"].map(lambda band: _BAND_ORDER.get(normalize_band(band), 0) >= 2).sum()) if covered else 0
-    median = safe_float(data["risk_score"].median(), default=float("nan")) if covered else float("nan")
+    elevated_plus = (
+        int(data["risk_band"].map(lambda band: _BAND_ORDER.get(normalize_band(band), 0) >= 2).sum())
+        if covered
+        else 0
+    )
+    median = (
+        safe_float(data["risk_score"].median(), default=float("nan"))
+        if covered
+        else float("nan")
+    )
     coverage_col = "data_completeness" if "data_completeness" in data.columns else None
-    coverage = safe_float(pd.to_numeric(data[coverage_col], errors="coerce").median(), default=float("nan")) if coverage_col else float("nan")
+    coverage = (
+        safe_float(
+            pd.to_numeric(data[coverage_col], errors="coerce").median(),
+            default=float("nan"),
+        )
+        if coverage_col
+        else float("nan")
+    )
 
     deteriorating = data.dropna(subset=["change"]).sort_values("change", ascending=False)
     improving = data.dropna(subset=["change"]).sort_values("change", ascending=True)

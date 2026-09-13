@@ -1,4 +1,4 @@
-"""BIS Statistics SDMX REST API adapter."""
+"""BIS Statistics SDMX REST API adapter. Public."""
 from __future__ import annotations
 
 from typing import Any
@@ -16,12 +16,11 @@ def fetch_data(dataflow: str, version: str, key: str, *, start_period: str | Non
         params["startPeriod"] = start_period
     if end_period:
         params["endPeriod"] = end_period
-    response = session().get(url, params=params, headers={"Accept": ACCEPT}, timeout=90)
-    response.raise_for_status()
-    return {"fetched_at": fetched_at(), "url": response.url, "data": response.json()}
+    r = session().get(url, params=params, headers={"Accept": ACCEPT}, timeout=90)
+    r.raise_for_status()
+    return {"fetched_at": fetched_at(), "url": r.url, "data": r.json()}
 
 
 def smoke_test() -> dict[str, Any]:
     result = fetch_data("WS_CREDIT_GAP", "1.0", "Q.IN.P.A.C", start_period="2020-Q1", end_period="2024-Q4")
-    data = result.get("data")
-    return {"source": "BIS", "ok": bool(data), "endpoint": result["url"], "detail": "India credit-to-GDP gap returned" if data else "No BIS data returned"}
+    return {"source": "BIS", "ok": bool(result.get("data")), "endpoint": result["url"]}
