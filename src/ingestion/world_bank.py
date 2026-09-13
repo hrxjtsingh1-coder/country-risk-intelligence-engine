@@ -1,4 +1,4 @@
-"""World Bank Indicators API adapter. Public; no API key required."""
+"""World Bank Indicators API adapter. Public V2 API; no key required."""
 from __future__ import annotations
 
 from typing import Any
@@ -20,4 +20,4 @@ def fetch_indicator(country: str, indicator: str, start: int | None = None, end:
 
 def smoke_test() -> dict[str, Any]:
     rows = fetch_indicator("IND", "NY.GDP.MKTP.CD", 2020, 2024)
-    return {"source": "World Bank", "ok": bool(rows), "rows": len(rows)}
+    return {"source": "World Bank", "ok": bool(rows), "rows": len(rows), "endpoint": BASE_URL.format(country="IND", indicator="NY.GDP.MKTP.CD"), "detail": "GDP observations returned" if rows else "No observations returned"}
