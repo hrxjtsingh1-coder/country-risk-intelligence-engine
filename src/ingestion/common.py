@@ -1,7 +1,7 @@
 """Shared HTTP helpers for official data-provider adapters."""
 from __future__ import annotations
 
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import Any
 
 import requests
