@@ -6,6 +6,7 @@ The cleaning layer is deliberately conservative:
 - numeric values are coerced safely;
 - configured bounds are applied as flags rather than silently rewriting data;
 - duplicate country/indicator/year observations keep the latest source row;
+- the production contract keeps only the current calendar year;
 - long data are converted to a country-year wide panel for scoring/dashboard use.
 """
 
@@ -15,6 +16,8 @@ from pathlib import Path
 
 import pandas as pd
 import yaml
+
+from src.runtime.year_policy import CURRENT_YEAR
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = ROOT / "config" / "indicators.yaml"
@@ -49,7 +52,7 @@ def _bounds() -> dict[str, tuple[float | None, float | None]]:
 
 
 def clean_long_panel(df: pd.DataFrame) -> pd.DataFrame:
-    """Normalize a long country/indicator/year panel."""
+    """Normalize a long panel and enforce the current-year production contract."""
     if df is None or df.empty:
         return pd.DataFrame(
             columns=[
@@ -104,6 +107,11 @@ def clean_long_panel(df: pd.DataFrame) -> pd.DataFrame:
     out = out.dropna(subset=["country_iso3", "indicator_code", "year"])
     out["year"] = out["year"].astype(int)
 
+    # Production is intentionally single-year. Historical observations are
+    # discarded at the canonical cleaning boundary so downstream consumers
+    # cannot accidentally expose stale years.
+    out = out.loc[out["year"].eq(CURRENT_YEAR)].copy()
+
     # Keep the last observation for duplicate keys. Source collectors append
     # their records in deterministic order.
     out = (
@@ -119,7 +127,7 @@ def clean_long_panel(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def to_wide_panel(df_long: pd.DataFrame) -> pd.DataFrame:
-    """Convert long observations into one row per country/year."""
+    """Convert current-year long observations into one row per country/year."""
     clean = clean_long_panel(df_long)
 
     if clean.empty:
@@ -142,16 +150,20 @@ def coverage_report(
     indicators: list[str],
     years: list[int],
 ) -> pd.DataFrame:
-    """Return simple country/indicator/year coverage diagnostics."""
-    clean = clean_long_panel(df_long)
+    """Return current-year country/indicator coverage diagnostics."""
+    if any(int(year) != CURRENT_YEAR for year in years):
+        raise ValueError(f"Coverage checks may only target current year {CURRENT_YEAR}.")
 
+    clean = clean_long_panel(df_long)
     expected = max(1, len(indicators) * len(years))
 
     rows = []
     for country in countries:
         subset = clean[clean["country_iso3"].eq(str(country).upper())]
         observed = int(
-            subset[subset["indicator_code"].isin(indicators) & subset["year"].isin(years)][["indicator_code", "year"]]
+            subset[
+                subset["indicator_code"].isin(indicators) & subset["year"].isin(years)
+            ][["indicator_code", "year"]]
             .drop_duplicates()
             .shape[0]
         )
