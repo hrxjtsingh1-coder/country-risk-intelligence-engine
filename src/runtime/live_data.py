@@ -1,17 +1,10 @@
 """
 Runtime live-data provider for the deployed dashboard.
 
-This is what the PUBLIC app calls automatically — no one should ever need
-to run `python -m src.pipeline.run_all` to see live data (PHASE 3).
-src/pipeline/run_all.py remains a separate, optional local/reproducible
-path that writes data/processed/panel_wide.csv; this module never reads or
-writes that file (PHASE 7) — it builds the panel in memory for the current
-session and hands it back to the caller.
-
-Contract: either return a populated, validated LiveResult, or raise
-LiveDataUnavailable with a message written for an end user, not a
-developer. This module never imports Streamlit — dashboard/app.py decides
-what to render; this module only decides what's true about the data.
+The public app fetches official data directly into memory. Production data is
+restricted to the current calendar year; older observations are not exposed
+through the runtime panel, even when an upstream response or cache contains
+historical records.
 """
 
 from __future__ import annotations
@@ -24,6 +17,7 @@ import pandas as pd
 from src.cleaning.clean import clean_long_panel, to_wide_panel
 from src.indicators.build_panel import FetchMetadata, build_long_panel_batched
 from src.runtime.provenance import Provenance, make_provenance
+from src.runtime.year_policy import CURRENT_YEAR, validate_current_year_range
 
 WORLD_BANK_SOURCE = {"name": "World Bank Indicators API", "url": "https://api.worldbank.org/v2"}
 FRED_SOURCE = {"name": "FRED (Federal Reserve Economic Data)", "url": "https://fred.stlouisfed.org"}
@@ -31,11 +25,7 @@ BIS_SOURCE = {"name": "BIS Statistics (credit-to-GDP gaps)", "url": "https://sta
 
 
 class LiveDataUnavailable(Exception):
-    """
-    Raised when a live fetch could not produce a usable panel.
-    Message text is shown directly to end users (PHASE 9) — keep it plain,
-    not a stack trace. Technical detail, if any, goes in .technical_detail.
-    """
+    """Raised when a live fetch could not produce a usable current-year panel."""
 
     def __init__(self, message: str, technical_detail: str = ""):
         super().__init__(message)
@@ -60,35 +50,14 @@ def select_latest_common_year(
     min_coverage: float = 0.8,
     min_countries: int = 5,
 ) -> int | None:
-    """
-    Walk years newest-to-oldest; return the first one where enough of the
-    SCORE-RELEVANT indicator weight is populated across enough countries to
-    compute a meaningful cross-section (PHASE 11). Deliberately not "the
-    current calendar year" (annual macro data lags by 1-2 years almost
-    everywhere) and not "the newest year with ANY data" (one stray
-    observation for one country would otherwise win).
-
-    Falls back to the single newest year with any data at all if nothing
-    clears the bar — callers should treat that case as low-confidence and
-    say so (see dashboard's coverage warning).
-    """
-    if long_panel.empty:
+    """Return the current year when a current-year panel is available."""
+    del weighted_indicators, min_coverage, min_countries
+    if long_panel is None or long_panel.empty or "year" not in long_panel.columns:
         return None
-    total_weight = sum(w for _, w in weighted_indicators) or 1.0
-
-    for year in sorted(long_panel["year"].unique(), reverse=True):
-        year_slice = long_panel[long_panel["year"] == year]
-        countries_present = year_slice["country_iso3"].nunique()
-        if countries_present < min_countries:
-            continue
-        covered_weight = 0.0
-        for code, weight in weighted_indicators:
-            n_with_indicator = year_slice.loc[year_slice["indicator_code"] == code, "country_iso3"].nunique()
-            covered_weight += weight * (n_with_indicator / max(countries_present, 1))
-        if covered_weight / total_weight >= min_coverage:
-            return int(year)
-
-    return int(long_panel["year"].max())
+    years = pd.to_numeric(long_panel["year"], errors="coerce").dropna().astype(int).unique()
+    if CURRENT_YEAR not in years:
+        return None
+    return CURRENT_YEAR
 
 
 def fetch_live_panel(
@@ -98,18 +67,20 @@ def fetch_live_panel(
     end_year: int,
     config_version: str = "unversioned",
 ) -> LiveResult:
-    """
-    Fetch, validate, and build the canonical wide panel from live public
-    data. A PARTIAL result (some indicators or countries missing) is still
-    a successful return — "usable" means "enough to compute at least one
-    country's score", not "complete"; coverage gaps show up in provenance,
-    not as a hard failure. Only genuinely empty/unusable output raises.
-    """
+    """Fetch and validate a canonical current-year panel from live sources."""
     if os.environ.get("COUNTRY_RISK_OFFLINE", "").strip().lower() in {"1", "true", "yes"}:
         raise LiveDataUnavailable(
             "Live data is disabled in this environment (COUNTRY_RISK_OFFLINE).",
             technical_detail="COUNTRY_RISK_OFFLINE is set; no network request was attempted.",
         )
+
+    try:
+        current_start, current_end = validate_current_year_range(start_year, end_year)
+    except ValueError as exc:
+        raise LiveDataUnavailable(
+            f"Only current-year live data ({CURRENT_YEAR}) is supported.",
+            technical_detail=str(exc),
+        ) from exc
 
     records = indicators_cfg.get("indicators", []) if isinstance(indicators_cfg, dict) else []
     if not records:
@@ -120,7 +91,11 @@ def fetch_live_panel(
         raise LiveDataUnavailable("No countries are configured (config/countries.yaml is empty).")
 
     try:
-        long_panel, fetch_meta = build_long_panel_batched(iso3_codes, start_year, end_year)
+        long_panel, fetch_meta = build_long_panel_batched(
+            iso3_codes,
+            current_start,
+            current_end,
+        )
     except Exception as exc:  # noqa: BLE001 - this boundary must never raise past it
         raise LiveDataUnavailable(
             "Official public data could not be retrieved right now.",
@@ -129,19 +104,25 @@ def fetch_live_panel(
 
     if long_panel.empty:
         raise LiveDataUnavailable(
-            "The World Bank Indicators API returned no usable observations for the "
-            "configured countries and period. This is usually transient."
+            f"Official sources returned no usable observations for {CURRENT_YEAR}. "
+            "This can happen when an annual indicator has not yet been published for the current year."
         )
 
     long_panel = clean_long_panel(long_panel)
     if long_panel.empty:
-        raise LiveDataUnavailable("Every observation retrieved failed validation (out-of-range or malformed).")
-    wide_panel = to_wide_panel(long_panel)
+        raise LiveDataUnavailable(
+            f"Official sources returned no usable observations for current year {CURRENT_YEAR}."
+        )
 
-    weighted_indicators = [(r["code"], float(r.get("weight", 0) or 0)) for r in records if r.get("code")]
+    wide_panel = to_wide_panel(long_panel)
+    weighted_indicators = [
+        (r["code"], float(r.get("weight", 0) or 0))
+        for r in records
+        if r.get("code")
+    ]
     latest_year = select_latest_common_year(long_panel, weighted_indicators)
     if latest_year is None:
-        raise LiveDataUnavailable("Could not determine a usable analysis year from live data.")
+        raise LiveDataUnavailable(f"No current-year ({CURRENT_YEAR}) observations are available.")
 
     world_bank_ok = bool(long_panel["source"].astype(str).str.contains("World Bank", case=False).any())
     fred_ok = bool(long_panel["source"].astype(str).str.contains("FRED", case=False).any())
@@ -150,7 +131,7 @@ def fetch_live_panel(
     expected = len(iso3_codes) * len(weighted_indicators)
     received = (
         long_panel.drop_duplicates(subset=["country_iso3", "indicator_code", "year"])
-        .pipe(lambda df: df[df["year"] == latest_year])
+        .pipe(lambda df: df[df["year"] == CURRENT_YEAR])
         .shape[0]
     )
 
@@ -163,21 +144,21 @@ def fetch_live_panel(
         )
     if not fred_ok:
         validation_failures.append(
-            "FRED enrichment (US policy-rate YoY change and the global commodity-price "
-            "index) unavailable this run — World Bank data is unaffected; these indicators "
-            "carry zero weight in the composite score regardless (see config/indicators.yaml)."
+            "FRED enrichment is unavailable this run; affected indicators remain missing "
+            "rather than being replaced with stale historical values."
         )
     if not bis_ok:
         validation_failures.append(
-            "BIS credit-to-GDP gap unavailable this run — the banking-stress scenario "
-            "preset will report a missing driver, but World Bank data and composite "
-            "scores are unaffected (the gap carries zero weight; see config/indicators.yaml)."
+            "BIS credit-to-GDP gap is unavailable this run; the current-year panel remains "
+            "explicitly missing for that driver rather than using older data."
         )
 
     provenance = make_provenance(
-        sources=[WORLD_BANK_SOURCE] + ([FRED_SOURCE] if fred_ok else []) + ([BIS_SOURCE] if bis_ok else []),
-        requested_period=f"{start_year}-{end_year}",
-        latest_observation_year=latest_year,
+        sources=[WORLD_BANK_SOURCE]
+        + ([FRED_SOURCE] if fred_ok else [])
+        + ([BIS_SOURCE] if bis_ok else []),
+        requested_period=f"{current_start}-{current_end}",
+        latest_observation_year=CURRENT_YEAR,
         country_count=len(iso3_codes),
         indicator_count=len(weighted_indicators),
         expected_observations=expected,
@@ -190,7 +171,7 @@ def fetch_live_panel(
         wide_panel=wide_panel,
         long_panel=long_panel,
         provenance=provenance,
-        latest_common_year=latest_year,
+        latest_common_year=CURRENT_YEAR,
         world_bank_ok=world_bank_ok,
         fred_ok=fred_ok,
         bis_ok=bis_ok,
