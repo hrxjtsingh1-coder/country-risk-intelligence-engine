@@ -5,12 +5,10 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from src.runtime.year_policy import CURRENT_YEAR
-
 
 @pytest.fixture()
 def sample_long_panel() -> pd.DataFrame:
-    """Minimal long-format panel for the current-year-only production contract."""
+    """Minimal long-format panel with 5 countries, 6 years, 10 indicators."""
     rows = []
     countries = ["USA", "CAN", "DEU", "IND", "BRA"]
     indicators = [
@@ -25,24 +23,25 @@ def sample_long_panel() -> pd.DataFrame:
         ("FX_YOY_DEPRECIATION_PCT", 2, 1),
         ("POLICY_RATE_YOY_CHANGE_BPS", 0, 1),
     ]
-    for i, country in enumerate(countries):
-        for code, base, sign in indicators:
-            rows.append(
-                {
-                    "country_iso3": country,
-                    "indicator_code": code,
-                    "year": CURRENT_YEAR,
-                    "value": base + i + sign,
-                    "source": "World Bank",
-                    "flag": "ok",
-                }
-            )
+    for year in range(2020, 2026):
+        for i, c in enumerate(countries):
+            for code, base, _sign in indicators:
+                rows.append(
+                    {
+                        "country_iso3": c,
+                        "indicator_code": code,
+                        "year": year,
+                        "value": base + i + (year - 2020) * _sign,
+                        "source": "World Bank",
+                        "flag": "ok",
+                    }
+                )
     return pd.DataFrame(rows)
 
 
 @pytest.fixture()
 def sample_wide_panel(sample_long_panel: pd.DataFrame) -> pd.DataFrame:
-    """Wide-format current-year panel pivoted from sample_long_panel."""
+    """Wide-format panel pivoted from sample_long_panel."""
     from src.cleaning.clean import to_wide_panel
 
     return to_wide_panel(sample_long_panel)
