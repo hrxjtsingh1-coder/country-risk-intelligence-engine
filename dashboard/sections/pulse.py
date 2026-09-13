@@ -8,10 +8,6 @@ single source of truth.
 
 from __future__ import annotations
 
-import numpy as np
-import pandas as pd
-import streamlit as st
-
 from dashboard.context import Context
 from dashboard.ui import (
     band_color,
@@ -21,6 +17,10 @@ from dashboard.ui import (
     normalize_band,
     safe_float,
 )
+
+import numpy as np
+import pandas as pd
+import streamlit as st
 
 
 _BAND_ORDER = {"Low": 0, "Moderate": 1, "Elevated": 2, "High": 3, "Severe": 4}
