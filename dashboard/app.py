@@ -333,7 +333,7 @@ else:
 
 with st.sidebar:
     st.markdown(
-        f"""
+        """
         <div style="padding:4px 4px 16px;">
             <div class="kicker">GLOBAL COUNTRY RISK</div>
             <div style="font-family:'Space Grotesk';font-size:21px;font-weight:700;">Intelligence Engine</div>
@@ -435,403 +435,73 @@ with st.sidebar:
                 st.rerun()
 
     with refresh_col2:
-        st.caption("Panel")
-        st.caption(f"{len(panel):,} rows")
+        if st.button("Reset View", width="stretch"):
+            for key in ("country_selector", "year_selector", "page_nav"):
+                st.session_state.pop(key, None)
+            st.rerun()
 
-    st.markdown("---")
-
-    st.markdown(
-        """
-        <div class="micro">
-            ENGINE STATUS<br>
-            <span style="color:#54d69a;">● ONLINE</span><br><br>
-            Analytics remain deterministic and traceable.
-            The interface is layered on top of the existing engine.
-        </div>
-        """,
-        unsafe_allow_html=True,
+    st.caption(
+        f"Data mode: {'DEMO' if USING_DEMO_DATA else 'CACHED' if USING_CACHED_DATA else 'LIVE'}"
     )
 
 
 # ============================================================================
-# USER-FACING CONTEXT / SCENARIO WORKSPACE
-#
-# Scenario controls live in the main workspace rather than the sidebar. This
-# keeps the sidebar focused on navigation and the selected analytical context.
+# EXECUTION CONTEXT
 # ============================================================================
 
-page_title, page_subtitle = {
-    "Overview": ("GLOBAL PULSE", "A compact read of the panel: what is changing, where, and how much coverage exists."),
-    "Country Intelligence": ("COUNTRY INTELLIGENCE", "Move from the score to the drivers, evidence, resilience, and what to watch next."),
-    "Compare": ("COMPARE", "Understand why countries rank differently instead of comparing two tables in isolation."),
-    "Scenario Lab": ("SCENARIO LAB", "Stress-test supported drivers and see the transmission path from shock to composite risk."),
-    "Early Warning": ("EARLY WARNING", "Monitor deterioration signals and data-quality warnings without calling them predictions."),
-    "Global Linkages": ("GLOBAL LINKAGES", "Explore co-movement and regional structure. Correlation is not causation."),
-    "Validation": ("VALIDATION", "See what the engine flagged, missed, or could not judge in historical episodes."),
-    "Data & Methodology": ("DATA & METHODOLOGY", "Inspect how raw observations become scores, commentary, exports, and limitations."),
-}.get(page, ("GLOBAL PULSE", "A compact read of the panel."))
-
-status_label = "DEMO" if USING_DEMO_DATA else "CACHED" if USING_CACHED_DATA else "LIVE"
-status_color = "#ff9f5b" if USING_DEMO_DATA or USING_CACHED_DATA else "#54d69a"
-st.markdown(
-    f"""
-    <div class="context-bar">
-        <div>
-            <div class="kicker">{esc(page_title)}</div>
-            <div class="context-title">{esc(page_subtitle)}</div>
-        </div>
-        <div class="context-state">
-            <span class="context-dot" style="background:{status_color};"></span>
-            <strong>{esc(get_country_label(country))}</strong>
-            <span>{esc(str(country))}</span>
-            <span class="context-divider">/</span>
-            <strong>{int(year)}</strong>
-            <span class="context-divider">/</span>
-            <span>{status_label}</span>
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-selected_preset_key = None
-shock = 0
-if page == "Scenario Lab":
-    preset_choices = ["+ None (custom shock)"] + [shock_preset(name)["name"] for name in available_shock_presets()]
-    st.markdown(
-        """
-        <div class="workspace-callout">
-            <div class="card-label">SCENARIO WORKSPACE</div>
-            <div class="card-caption">Choose a supported preset or define a transparent policy-rate shock. The output below is an estimate, not a forecast.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    scenario_cols = st.columns([1.35, 1, 1])
-    with scenario_cols[0]:
-        preset_label = st.selectbox("Scenario preset", preset_choices, index=0, key="scenario_lab_preset")
-    if preset_label != preset_choices[0]:
-        for _name in available_shock_presets():
-            if shock_preset(_name)["name"] == preset_label:
-                selected_preset_key = _name
-                break
-    with scenario_cols[1]:
-        if selected_preset_key is None:
-            shock = st.slider(
-                "Policy rate shock (bps)",
-                min_value=-1000,
-                max_value=1000,
-                value=0,
-                step=25,
-                key="scenario_lab_shock",
-            )
-        else:
-            _preset_config = shock_preset(selected_preset_key)
-            shock = float(_preset_config["default_shock_amount"])
-            st.metric("Preset shock", f"{shock:g} {_preset_config['display_unit']}")
-    with scenario_cols[2]:
-        if selected_preset_key is None:
-            st.caption("Driver")
-            st.code("POLICY_RATE_YOY_CHANGE_BPS", language=None)
-        else:
-            _preset_config = shock_preset(selected_preset_key)
-            st.caption("Supported driver")
-            st.code(str(_preset_config["driver_code"]), language=None)
-
-
-# ============================================================================
-# ORIGINAL ANALYTICAL EXECUTION
-#
-# The calls below intentionally mirror the original dashboard contract:
-#
-#   scores, drivers = score_panel(panel)
-#   top_drivers(drivers, country, year, n=6)
-#   run_shock_scenario(panel, ...)
-#   generate_report(...)
-#
-# The UI never substitutes a second scoring methodology.
-# ============================================================================
-
-scores, drivers, pillar_scores = score_panel(panel)
-
-if "country_iso3" not in scores.columns or "year" not in scores.columns:
-    st.error("Scoring output is missing country_iso3/year columns.")
-    st.stop()
-
-row = scores[
-    scores["country_iso3"].astype(str).eq(str(country)) & pd.to_numeric(scores["year"], errors="coerce").eq(int(year))
-]
-
-if row.empty or pd.isna(row.iloc[0]["risk_score"]):
-    st.error(f"No sufficient indicator data to score {get_country_label(country)} in {year}.")
-    st.stop()
-
-score_value = safe_float(row.iloc[0]["risk_score"])
-band = str(row.iloc[0]["risk_band"])
-score_color = band_color(band)
-coverage_value = safe_float(row.iloc[0]["data_completeness"], default=float("nan"))
-
-try:
-    current_row = row_for(panel, country, year)
-except Exception:
-    current_row = pd.Series(dtype=object)
-
-try:
-    country_drivers = top_drivers(drivers, country, year, n=6)
-except Exception as exc:
-    country_drivers = pd.DataFrame()
-    user_error("Driver decomposition is temporarily unavailable for this slice.", exc)
-
-driver_code = "POLICY_RATE_YOY_CHANGE_BPS"
-shock_amount = float(shock)
-run_scenario_btn = False
-scenario_result = None
-scenario = None
-scenario_error = None
-
-if selected_preset_key is not None:
-    _preset_config = shock_preset(selected_preset_key)
-    run_scenario_btn = True
-    preset_driver = str(_preset_config["driver_code"])
-    if preset_driver not in panel.columns:
-        scenario_error = ValueError(
-            f"The '{_preset_config['name']}' preset needs the driver series "
-            f"{preset_driver}, which is not present in this panel. The collector "
-            "now supplies it (see config/indicators.yaml); a freshly built or "
-            "refreshed panel will enable this preset as-is."
-        )
-    else:
-        try:
-            scenario_result = run_shock_scenario(panel, country, year, preset=selected_preset_key)
-            scenario = scenario_result
-        except Exception as exc:
-            scenario_error = exc
-elif not np.isclose(shock_amount, 0.0):
-    run_scenario_btn = True
-    try:
-        scenario_result = run_shock_scenario(
-            panel,
-            country,
-            year,
-            driver_code,
-            shock_amount,
-            [
-                "FX_YOY_DEPRECIATION_PCT",
-                "NY.GDP.MKTP.KD.ZG",
-                "GC.DOD.TOTL.GD.ZS",
-            ],
-        )
-        scenario = scenario_result
-    except Exception as exc:
-        scenario_error = exc
-
-peer_group = next(
-    (members for members in peer_groups.values() if country in members),
-    None,
-)
-
-source_by_code = {}
-for indicator in indicators_cfg.get("indicators", []) if isinstance(indicators_cfg, dict) else []:
-    if isinstance(indicator, dict) and indicator.get("code"):
-        source_by_code[str(indicator["code"])] = str(indicator.get("source", ""))
-
-_report_sources = None
-if (
-    isinstance(country_drivers, pd.DataFrame)
-    and not country_drivers.empty
-    and "indicator_code" in country_drivers.columns
-):
-    _report_sources = sorted(
-        {s for c in country_drivers["indicator_code"] for s in [source_by_code.get(str(c), str(c))]}
-    )
-    if not _report_sources:
-        _report_sources = None
-
-generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-report = generate_report(
-    country_name=get_country_label(country),
-    country_iso3=country,
-    year=int(year),
-    scores=scores,
-    drivers=drivers,
-    scenario_result=scenario_result,
-    peer_group=[c for c in (peer_group or []) if c != country],
-    sources=_report_sources,
-    generated_at=generated_at,
-)
-
-
-# Provenance surfaced under every score and chart: where the numbers came
-# from and which exact pipeline manifest hash produced them. Demo data is
-# labeled honestly as synthetic and never presented as verified.
-if USING_DEMO_DATA:
-    data_verified = False
-    provenance_sources = ""
-    provenance_asof = ""
-elif USING_CACHED_DATA:
-    data_verified = False
-    provenance_sources = "Cached pipeline panel"
-    try:
-        provenance_asof = datetime.fromtimestamp(PANEL_PATH.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
-    except OSError:
-        provenance_asof = ""
-elif live_provenance is not None:
-    data_verified = True
-    _prov_sources = getattr(live_provenance, "sources", None) or []
-    provenance_sources = ", ".join(str(s.get("name")) for s in _prov_sources if isinstance(s, dict) and s.get("name"))
-    provenance_asof = str(getattr(live_provenance, "retrieved_at", "") or "")
-else:
-    data_verified = False
-    provenance_sources = ""
-    provenance_asof = ""
-
-manifest_hash = _manifest_short_hash()
-
-
-# Peer-relative standing for the selected slice. `peer_groups` is loaded from
-# config/countries.yaml; a country in no group is compared against the whole
-# panel cross-section (consistent with the scoring's own fallback).
-peer_info = peer_percentile(scores, country, year, peer_groups=peer_groups) or {}
-
-
-# ============================================================================
-# SHARED CONTEXT + PAGE COMPOSITION
-#
-# Each product destination composes existing section modules from the same
-# Context. Navigation changes the reading path, never the scoring method.
-# ============================================================================
+scores = score_panel(panel, indicators_cfg)
+selected_country = get_iso(country)
+selected_row = row_for(scores, selected_country, year)
 
 ctx = Context(
     panel=panel,
     scores=scores,
-    drivers=drivers,
-    pillar_scores=pillar_scores,
+    country=selected_country,
+    year=year,
+    countries_cfg=countries_cfg,
     indicators_cfg=indicators_cfg,
-    country=country,
-    year=int(year),
-    iso=get_iso(country),
-    country_label=get_country_label(country),
-    band=band,
-    score_value=score_value,
-    score_color=score_color,
-    coverage_value=coverage_value,
-    current_row=current_row,
-    country_drivers=country_drivers,
-    report=report,
-    scenario=scenario,
-    scenario_result=scenario_result,
-    scenario_error=scenario_error,
-    shock=shock,
-    run_scenario_btn=run_scenario_btn,
-    using_demo_data=USING_DEMO_DATA,
-    using_cached_data=USING_CACHED_DATA,
+    peer_groups=peer_groups,
+    using_demo=USING_DEMO_DATA,
+    using_cached=USING_CACHED_DATA,
     live_provenance=live_provenance,
-    generated_at=generated_at,
-    peer_percentile=peer_info.get("percentile"),
-    peer_riskier_share=peer_info.get("riskier_share"),
-    peer_rank=peer_info.get("rank"),
-    peer_n=int(peer_info.get("n") or 0),
-    peer_group_name=peer_info.get("group_name") or "",
-    data_verified=data_verified,
-    provenance_sources=provenance_sources,
-    provenance_asof=provenance_asof,
-    manifest_hash=manifest_hash,
+    live_error=live_error,
 )
 
-def _render_nav_footer(ctx: Context) -> None:
-    """Footer shared by the dedicated nav pages (Track Record, Contagion, ...)."""
-    st.markdown(
-        f"""
-        <div class="footer">
-            <span>COUNTRY RISK INTELLIGENCE ENGINE</span>
-            <span>{esc(ctx.iso)} / {int(ctx.year)} · ANALYTICAL CORE INTACT</span>
-            <span>
-                UI BUILD · {ctx.generated_at}
-                {f" · MANIFEST {esc(ctx.manifest_hash)}" if ctx.manifest_hash else ""}
-            </span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
+# ============================================================================
+# PAGE RENDERING
+# ============================================================================
 
 if page == "Overview":
-    pulse_section.render_global_pulse(ctx)
-    map_section.render_map(ctx)
-    _render_nav_footer(ctx)
-    st.stop()
-
-if page == "Country Intelligence":
-    country_section.render_hero(ctx)
-    country_section.render_provenance(ctx)
-    country_section.render_kpi(ctx)
-    country_section.render_interpretation(ctx)
-    country_section.render_trajectory(ctx)
-    country_section.render_drivers(ctx)
-    country_section.render_resilience(ctx)
-    fx_deviation_section.render_fx_deviation(ctx)
-    country_section.render_analyst_intelligence(ctx)
-    country_section.render_data_coverage(ctx)
-    _render_nav_footer(ctx)
-    st.stop()
-
-if page == "Compare":
-    comparison_section.render_peer_comparison(ctx)
-    _render_nav_footer(ctx)
-    st.stop()
-
-if page == "Scenario Lab":
-    scenario_section.render_scenario_laboratory(ctx)
-    _render_nav_footer(ctx)
-    st.stop()
-
-if page == "Early Warning":
-    comparison_section.render_deterioration_watch(ctx)
-    _render_nav_footer(ctx)
-    st.stop()
-
-if page in {"Global Linkages", "Contagion & Correlations"}:
-    contagion_section.render_contagion(ctx)
-    _render_nav_footer(ctx)
-    st.stop()
-
-if page in {"Validation", "Track Record & Model Validation"}:
-    track_record_section.render_track_record(ctx)
-    methodology_section.render_model_validation(ctx)
-    _render_nav_footer(ctx)
-    st.stop()
-
-if page == "Data & Methodology":
-    methodology_section.render_model_card(ctx)
-    country_section.render_provenance(ctx)
-    methodology_section.render_export_inspection(ctx)
-    methodology_section.render_engine_integrity(ctx)
-    benchmark_section.render_agency_benchmark(ctx)
-    pdf_export_section.render_pdf_export(ctx)
-    about_section.render_about(ctx)
-    _render_nav_footer(ctx)
-    st.stop()
+    pulse_section.render(ctx)
+elif page == "Country Intelligence":
+    country_section.render(ctx)
+elif page == "Compare":
+    comparison_section.render(ctx)
+elif page == "Scenario Lab":
+    scenario_section.render(ctx)
+elif page == "Early Warning":
+    fx_deviation_section.render(ctx)
+elif page == "Contagion & Correlations":
+    contagion_section.render(ctx)
+elif page == "Track Record & Model Validation":
+    track_record_section.render(ctx)
+elif page == "Data & Methodology":
+    methodology_section.render(ctx)
 
 
 # ============================================================================
-# FOOTER
+# OPTIONAL SECONDARY PANELS / PDF EXPORT
 # ============================================================================
 
-st.markdown(
-    f"""
-    <div class="footer">
-        <span>COUNTRY RISK INTELLIGENCE ENGINE</span>
-        <span>{esc(ctx.iso)} / {int(ctx.year)} · ANALYTICAL CORE INTACT</span>
-        <span>
-            UI BUILD · {ctx.generated_at}
-            {f" · MANIFEST {esc(ctx.manifest_hash)}" if ctx.manifest_hash else ""}
-        </span>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+with st.expander("More analysis & tools"):
+    tool_col1, tool_col2 = st.columns(2)
+    with tool_col1:
+        st.markdown("### Benchmark")
+        benchmark_section.render(ctx)
+    with tool_col2:
+        st.markdown("### PDF export")
+        pdf_export_section.render(ctx)
 
-# ============================================================================
-# END
-# ============================================================================
+with st.expander("About the engine"):
+    about_section.render(ctx)
