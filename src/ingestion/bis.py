@@ -1,12 +1,14 @@
 """BIS Statistics SDMX REST API adapter. Public."""
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 from .common import fetched_at, session
 
 BASE_URL = "https://stats.bis.org/api/v2/data/dataflow/BIS"
 ACCEPT = "application/vnd.sdmx.data+json;version=1.0.0"
+CURRENT_YEAR = date.today().year
 
 
 def fetch_data(dataflow: str, version: str, key: str, *, start_period: str | None = None, end_period: str | None = None) -> dict[str, Any]:
@@ -22,5 +24,7 @@ def fetch_data(dataflow: str, version: str, key: str, *, start_period: str | Non
 
 
 def smoke_test() -> dict[str, Any]:
-    result = fetch_data("WS_CREDIT_GAP", "1.0", "Q.IN.P.A.C", start_period="2020-Q1", end_period="2024-Q4")
-    return {"source": "BIS", "ok": bool(result.get("data")), "endpoint": result["url"]}
+    quarter = ((date.today().month - 1) // 3) + 1
+    period = f"{CURRENT_YEAR}-Q{quarter}"
+    result = fetch_data("WS_CREDIT_GAP", "1.0", "Q.IN.P.A.C", start_period=period, end_period=period)
+    return {"source": "BIS", "ok": bool(result.get("data")), "endpoint": result["url"], "year": CURRENT_YEAR}
