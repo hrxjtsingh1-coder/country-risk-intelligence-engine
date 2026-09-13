@@ -60,7 +60,7 @@ ignore = [
 "src/ingestion/common.py" = ["I001"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["src"]
+known-first-party = ["dashboard", "src"]
 
 [tool.mypy]
 python_version = "3.11"
