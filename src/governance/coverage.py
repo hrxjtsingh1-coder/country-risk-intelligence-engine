@@ -36,10 +36,12 @@ CONFIG_PATH = ROOT / "config" / "indicators.yaml"
 COUNTRIES_PATH = ROOT / "config" / "countries.yaml"
 EPISODES_PATH = ROOT / "config" / "episodes.yaml"
 DEMO_PANEL_PATH = ROOT / "data" / "demo" / "panel_wide.csv"
+BACKTEST_PANEL_PATH = ROOT / "data" / "backtest" / "panel_wide_historical.csv"
 
 # Repair hints: the exact command that regenerates the stale artifact.
 REPAIR_CMDS: dict[str, str] = {
     "demo_panel": "python scripts/create_demo_data.py --output data/demo/panel_wide.csv",
+    "backtest_panel": "python scripts/create_backtest_panel.py --output data/backtest/panel_wide_historical.csv",
     "live_panel": "python -m src.pipeline.run_all",
 }
 
@@ -141,7 +143,7 @@ def _verify_derivable(panel: pd.DataFrame, issues: list[CoverageIssue]) -> bool:
                         f"Derived indicator {code} in the panel no longer matches its documented derivation "
                         f"(max |re-derived - panel| = {drift.max():.6f} over {merged.shape[0]} rows). Regenerate the panel."
                     ),
-                    repair=REPAIR_CMDS["live_panel"],
+                    repair=REPAIR_CMDS["backtest_panel"],
                 )
             )
             ok = False
@@ -204,7 +206,7 @@ def verify_model_coverage(panel: pd.DataFrame, panel_source: str = "demo") -> Co
             rec = next((i for i in positive_weight if i["code"] == code), {})
             repair = None
             if str(rec.get("source", "")) == "derived":
-                repair = REPAIR_CMDS["live_panel"]
+                repair = REPAIR_CMDS["backtest_panel"]
             issues.append(
                 CoverageIssue(
                     severity="error",
@@ -307,7 +309,7 @@ def report_to_text(report: CoverageReport) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Verify model coverage of a panel and repair stale artifacts.")
-    parser.add_argument("--panel", default=str(DEMO_PANEL_PATH), help="Wide-format panel CSV path.")
+    parser.add_argument("--panel", default=str(BACKTEST_PANEL_PATH), help="Wide-format panel CSV path.")
     parser.add_argument("--format", choices=["text", "json"], default="text")
     args = parser.parse_args(argv)
 
