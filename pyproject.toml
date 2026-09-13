@@ -55,6 +55,9 @@ ignore = [
     "BLE001", # blind except (used intentionally at fault boundaries)
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"dashboard/app.py" = ["F541"]
+
 [tool.ruff.lint.isort]
 known-first-party = ["src"]
 

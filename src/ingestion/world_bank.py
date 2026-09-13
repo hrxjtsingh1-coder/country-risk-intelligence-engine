@@ -24,5 +24,16 @@ def fetch_indicator(country: str, indicator: str, start: int | None = None, end:
 
 
 def smoke_test() -> dict[str, Any]:
-    rows = fetch_indicator("IND", "NY.GDP.MKTP.CD", CURRENT_YEAR, CURRENT_YEAR)
-    return {"source": "World Bank", "ok": bool(rows), "rows": len(rows), "year": CURRENT_YEAR}
+    """Probe a stable, non-current-year series to test API reachability."""
+    payload = get_json(
+        BASE_URL.format(country="IND", indicator="SP.POP.TOTL"),
+        params={"format": "json", "per_page": 1},
+    )
+    rows = payload[1] if isinstance(payload, list) and len(payload) >= 2 else None
+    return {
+        "source": "World Bank",
+        "ok": isinstance(rows, list) and bool(rows),
+        "rows": len(rows) if isinstance(rows, list) else 0,
+        "year": CURRENT_YEAR,
+        "endpoint": BASE_URL.format(country="IND", indicator="SP.POP.TOTL"),
+    }

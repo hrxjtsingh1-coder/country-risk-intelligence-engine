@@ -11,7 +11,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import streamlit as st
-
 from dashboard.context import Context
 from dashboard.ui import (
     band_color,
@@ -177,7 +176,7 @@ def render_global_pulse(ctx: Context) -> None:
         ("MOST IMPROVING", esc(improving_name), "largest 1Y score decrease", "var(--green)"),
         ("MEDIAN COVERAGE", "—" if np.isnan(coverage) else f"{coverage:.0%}", "indicator completeness", "var(--blue)"),
     ]
-    for col, (label, value, caption, accent) in zip(metric_cols, metrics):
+    for col, (label, value, caption, accent) in zip(metric_cols, metrics, strict=True):
         with col:
             _metric_card(label, value, caption, accent)
 

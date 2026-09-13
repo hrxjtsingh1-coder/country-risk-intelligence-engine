@@ -1,7 +1,7 @@
 """Shared HTTP helpers for official data-provider adapters."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import requests
@@ -20,7 +20,7 @@ def session() -> requests.Session:
 
 def fetched_at() -> str:
     """Return a UTC timestamp for provenance metadata."""
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def get_json(
