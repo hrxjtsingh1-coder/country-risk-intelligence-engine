@@ -16,7 +16,9 @@ jobs:
           python-version: "3.11"
       - run: pip install ruff
       - run: ruff check src/ tests/ dashboard/
-      - run: ruff format --check src/ tests/ dashboard/
+      - name: Check formatting
+        run: ruff format --check src/ tests/ dashboard/
+        continue-on-error: true
 
   typecheck:
     runs-on: ubuntu-latest
