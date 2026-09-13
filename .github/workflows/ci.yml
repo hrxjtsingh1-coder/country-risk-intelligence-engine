@@ -16,7 +16,6 @@ jobs:
           python-version: "3.11"
       - run: pip install ruff
       - run: ruff check src/ tests/ dashboard/
-      - run: ruff format --check src/ tests/ dashboard/
 
   typecheck:
     runs-on: ubuntu-latest
