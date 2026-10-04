@@ -3,7 +3,7 @@
   "schema_version": 1,
   "methodology_version": "2.1.0",
   "dataset_mode": "live",
-  "built_at": "2026-10-03T11:09:55.095685+00:00",
+  "built_at": "2026-10-04T11:50:59.739888+00:00",
   "files": {
     "config/agency_ratings.yaml": {
       "sha256": "6ef2cd25b0af800633a0cb0f6e63ed96681ab0364806a7383b2d116e8ae73ec6",
@@ -22,7 +22,7 @@
       "size_bytes": 19133
     },
     "data/processed/data_metadata.json": {
-      "sha256": "91ee0902e3b423398bca015cbe43c70ba7a1ab051caf965c10324589e6d454b7",
+      "sha256": "cd6bc3c4c545468f82d869ae5750f9439caab40463255a387909099ac64c060b",
       "size_bytes": 661
     },
     "data/processed/panel_wide.csv": {
@@ -77,7 +77,7 @@
   },
   "signoff": {
     "signed_by": "pipeline-bot",
-    "signed_at": "2026-10-03T11:09:55.326657+00:00",
+    "signed_at": "2026-10-04T11:50:59.971309+00:00",
     "notes": ""
   }
 }
