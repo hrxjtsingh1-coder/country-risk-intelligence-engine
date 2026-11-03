@@ -3,7 +3,7 @@
   "schema_version": 1,
   "methodology_version": "2.1.0",
   "dataset_mode": "live",
-  "built_at": "2026-11-02T14:49:21.756495+00:00",
+  "built_at": "2026-11-03T13:41:19.706614+00:00",
   "files": {
     "config/agency_ratings.yaml": {
       "sha256": "6ef2cd25b0af800633a0cb0f6e63ed96681ab0364806a7383b2d116e8ae73ec6",
@@ -22,7 +22,7 @@
       "size_bytes": 19133
     },
     "data/processed/data_metadata.json": {
-      "sha256": "2a07c268627bd218e5640dacdd4c1e9aa6b0e7c56d3ffb7708b64ac51c1b55f1",
+      "sha256": "a3d855d61a118ee557644f59edc54450bee0da0c0dd6c25a2c76aaec16ca3a9f",
       "size_bytes": 661
     },
     "data/processed/panel_wide.csv": {
@@ -31,8 +31,8 @@
     }
   },
   "env": {
-    "python": "3.11.17",
-    "python_version_tuple": "3.11.17",
+    "python": "3.11.18",
+    "python_version_tuple": "3.11.18",
     "streamlit": "1.66.1",
     "pandas": "2.3.3",
     "numpy": "2.4.6",
@@ -77,7 +77,7 @@
   },
   "signoff": {
     "signed_by": "pipeline-bot",
-    "signed_at": "2026-11-02T14:49:21.914276+00:00",
+    "signed_at": "2026-11-03T13:41:19.913997+00:00",
     "notes": ""
   }
 }
