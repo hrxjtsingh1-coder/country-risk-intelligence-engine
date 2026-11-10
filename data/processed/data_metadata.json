@@ -1,9 +1,9 @@
 {
-  "run_id": "live-20261109T150621Z",
+  "run_id": "live-20261110T141802Z",
   "mode": "LIVE",
-  "started_at": "2026-11-09T15:06:21.757906+00:00",
-  "completed_at": "2026-11-09T15:11:49.494296+00:00",
-  "retrieved_at": "2026-11-09T15:11:49.494301+00:00",
+  "started_at": "2026-11-10T14:18:02.005410+00:00",
+  "completed_at": "2026-11-10T14:23:24.271767+00:00",
+  "retrieved_at": "2026-11-10T14:23:24.271774+00:00",
   "requested_period": "2026",
   "latest_available_observation": 2026,
   "country_count": 23,
