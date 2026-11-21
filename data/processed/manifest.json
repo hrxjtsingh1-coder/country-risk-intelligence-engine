@@ -3,7 +3,7 @@
   "schema_version": 1,
   "methodology_version": "2.1.0",
   "dataset_mode": "live",
-  "built_at": "2026-11-20T14:57:20.698398+00:00",
+  "built_at": "2026-11-21T14:15:49.849038+00:00",
   "files": {
     "config/agency_ratings.yaml": {
       "sha256": "6ef2cd25b0af800633a0cb0f6e63ed96681ab0364806a7383b2d116e8ae73ec6",
@@ -22,7 +22,7 @@
       "size_bytes": 19133
     },
     "data/processed/data_metadata.json": {
-      "sha256": "5bb4c67181a0d507c34703e7477147189bd5c5dd00bbe941325ce75252a1c7b7",
+      "sha256": "694bad536bf75e54f58add0afb427803adeab1b80d822517552bf084d95b2dc6",
       "size_bytes": 661
     },
     "data/processed/panel_wide.csv": {
@@ -37,7 +37,7 @@
     "pandas": "2.3.3",
     "numpy": "2.4.6",
     "plotly": "6.9.0",
-    "PyYAML": "6.0.3",
+    "PyYAML": "6.0.4",
     "requests": "2.34.2"
   },
   "model": {
@@ -77,7 +77,7 @@
   },
   "signoff": {
     "signed_by": "pipeline-bot",
-    "signed_at": "2026-11-20T14:57:20.817640+00:00",
+    "signed_at": "2026-11-21T14:15:50.084907+00:00",
     "notes": ""
   }
 }
